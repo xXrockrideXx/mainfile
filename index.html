@@ -37,6 +37,9 @@ body{margin:0}
   --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c;
   --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}
 *{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+.wrap,#out,.bar,.meta{min-width:0;max-width:100%}
+body{overflow-x:hidden}
 html,body{background:var(--bg)}
 body{color:var(--fg);font:16px/1.4 var(--sans);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 32px}
@@ -60,8 +63,27 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .meta{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);flex-wrap:wrap}
 .meta .actions{display:flex;gap:6px}
 .meta button{padding:6px 12px;font-size:.85rem}
-#list{display:grid;gap:8px}
-#banks[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+#list{display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
+.card,.bank{min-width:0;max-width:100%}
+.bar{grid-template-columns:minmax(0,1fr)}
+.tog[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.meta{row-gap:8px}
+.meta .actions{flex-wrap:wrap}
+.nums{display:grid;grid-template-columns:repeat(auto-fill,minmax(4.6rem,1fr));gap:6px}
+.nchip{font:600 .95rem var(--mono);font-variant-numeric:tabular-nums;padding:9px 4px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);text-align:center;cursor:pointer}
+.nchip.bk{color:var(--accent)}
+.nchip small{display:block;font:500 .68rem var(--sans);color:var(--muted);margin-top:1px}
+.tree{display:grid;gap:10px}
+.tbank{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px}
+.tbank .bhead{display:flex;align-items:baseline;gap:10px;min-width:0}
+.tbank .bhead .theme{font-size:.85rem;color:var(--muted);font-weight:500}
+.tbank .nums{margin-left:18px;padding-left:12px;border-left:2px solid var(--accent-soft)}
+.tbank .nchip{padding:7px 4px;font-size:.88rem;background:var(--bg)}
+#sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30}
+#sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:80vh;overflow:auto;background:var(--bg);border-radius:16px 16px 0 0;
+  padding:14px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:grid;gap:10px}
+#sheet .sheettop{display:flex;justify-content:space-between;align-items:center;gap:10px}
+#sheet .sheettop b{font-size:1rem}
 .bank{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 .bankhead{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:12px 14px;cursor:pointer}
 .bankno{font:600 1.25rem var(--mono);color:var(--accent);font-variant-numeric:tabular-nums}
@@ -118,7 +140,8 @@ td.diff{background:var(--accent-soft)}
     <div class="meta">
       <span id="count"></span>
       <span class="actions">
-        <button id="banks" aria-pressed="false">Banks</button>
+        <button id="machs" class="tog" aria-pressed="false">Machines</button>
+        <button id="banks" class="tog" aria-pressed="false">Banks</button>
         <button id="compare">Compare</button>
         <button id="copy" class="primary">Copy</button>
       </span>
@@ -138,7 +161,7 @@ td.diff{background:var(--accent-soft)}
         <li><code>2* &amp; helix &amp; !slant</code> <code>!</code> means <b>not</b></li>
         <li><code>2* &amp; helix+ ; 93*</code> mix them: <code>;</code> splits the groups</li>
         <li><code>/regex</code> regular expression on the whole record</li>
-        <li><b>Banks</b> button groups any result by bank (10101, 10103 → bank 101). Tap a bank to open it.</li>
+        <li><b>Machines</b> shows only machine numbers. <b>Banks</b> shows only banks (10101, 10103 → bank 101). Both on: machines indented under their bank. Tap any number for its details.</li>
         <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
         <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
       </ul>
@@ -154,6 +177,8 @@ td.diff{background:var(--accent-soft)}
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
+<div id="sheetbg" hidden></div>
+<div id="sheet" hidden role="dialog" aria-modal="true" aria-label="Machine details"></div>
 <style>.btnlike{display:inline-block;font:600 .95rem var(--sans);background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:10px 14px;cursor:pointer}</style>
 
 <script>
@@ -175,7 +200,8 @@ function parse(raw){
     const names = parts.length >= 17 ? FIELDS_17 : FIELDS_16;
     const rec = {"Machine Number": id};
     names.forEach((n,i)=> rec[n] = parts[i] ?? "");
-    let rtp = rec["Machine RTP %"]; if(rtp && !rtp.includes("%")) rtp += "%";
+    let rtp = rec["Machine RTP %"];
+    if (rtp){ const u=[...new Set(rtp.split("|").map(x=>x.trim()).filter(Boolean))]; rtp = u.join(" / "); if(!rtp.includes("%")) rtp += "%"; }
     rec._rtp = rtp;
     rec._blob = id + " " + line + " " + ROWS.map(r=>rec[r]||"").join(" ");
     rec._flat = rec._blob.replace(/\s+/g,"");
@@ -272,22 +298,24 @@ function render(){
   if (view.mode==="list"){
     $("count").textContent = `Showing ${view.rows.length} / ${entries.length}` + (view.terms ? ` (${view.terms} terms)` : "");
     if(!view.rows.length){ out.innerHTML = `<div class="empty">No machines match that search.</div>`; return; }
+    const terms = view.terms ? ` (${view.terms} terms)` : "";
     if (banksOn){
       const banks = groupBanks(view.rows);
-      $("count").textContent = `${view.rows.length} machines in ${banks.length} bank${banks.length===1?"":"s"}` + (view.terms ? ` (${view.terms} terms)` : "");
-      out.innerHTML = `<div id="list">` + banks.map(b=>{
-        const isOpen = openBanks.has(b.no);
-        return `<div class="bank${isOpen?" open":""}">
-          <div class="bankhead" tabindex="0" role="button" data-bank="${h(b.no)}" aria-expanded="${isOpen}">
-            <span class="bankno">${h(b.no)}</span>
-            <span class="bankinfo"><span class="theme">${h(b.title)}</span><span class="sub">${h(b.sub)}</span></span>
-            <span class="bankcount">${b.rows.length} machine${b.rows.length===1?"":"s"}</span>
-            <span class="mnums">${b.rows.map(e=>`<span>${h(e["Machine Number"])}</span>`).join("")}</span>
-          </div>
-          ${isOpen ? `<div class="bankbody">${b.rows.map(cardHtml).join("")}${b.rows.length>1?`<button class="cmpbank" data-bank="${h(b.no)}">Compare bank ${h(b.no)}</button>`:""}</div>` : ""}
-        </div>`;
-      }).join("") + `</div>`;
+      $("count").textContent = `${banks.length} bank${banks.length===1?"":"s"} · ${view.rows.length} machines${terms}`;
+      if (machsOn){
+        // banks with their machines indented underneath
+        out.innerHTML = `<div class="tree">` + banks.map(b=>`<div class="tbank">
+            <div class="bhead"><button class="nchip bk" data-bank="${h(b.no)}">${h(b.no)}</button><span class="theme">${h(b.title)} · ${b.rows.length}</span></div>
+            <div class="nums">${b.rows.map(e=>`<button class="nchip" data-id="${h(e["Machine Number"])}">${h(e["Machine Number"])}</button>`).join("")}</div>
+          </div>`).join("") + `</div>`;
+      } else {
+        out.innerHTML = `<div class="nums">` + banks.map(b=>`<button class="nchip bk" data-bank="${h(b.no)}">${h(b.no)}<small>${b.rows.length} machine${b.rows.length===1?"":"s"}</small></button>`).join("") + `</div>`;
+      }
+    } else if (machsOn){
+      $("count").textContent = `Showing ${view.rows.length} / ${entries.length}${terms}`;
+      out.innerHTML = `<div class="nums">` + view.rows.map(e=>`<button class="nchip" data-id="${h(e["Machine Number"])}">${h(e["Machine Number"])}</button>`).join("") + `</div>`;
     } else {
+      $("count").textContent = `Showing ${view.rows.length} / ${entries.length}${terms}`;
       out.innerHTML = `<div id="list">` + view.rows.map(cardHtml).join("") + `</div>`;
     }
   } else if (view.mode==="table"){
@@ -306,9 +334,11 @@ function render(){
 }
 
 function asText(){
-  if (view.mode==="list" && banksOn){
-    return ["Bank\tMachines\tTheme\tDetails", ...groupBanks(view.rows).map(b=>`${b.no}\t${b.rows.map(e=>e["Machine Number"]).join(", ")}\t${b.title}\t${b.sub}`)].join("\r\n");
+  if (view.mode==="list" && banksOn && machsOn){
+    return groupBanks(view.rows).map(b=>`${b.no}\t${b.rows.map(e=>e["Machine Number"]).join(", ")}`).join("\r\n");
   }
+  if (view.mode==="list" && banksOn){ return groupBanks(view.rows).map(b=>b.no).join("\r\n"); }
+  if (view.mode==="list" && machsOn){ return view.rows.map(e=>e["Machine Number"]).join("\r\n"); }
   if (view.mode==="list"){
     return ["Machine#\tSummary", ...view.rows.map(e=>`${e["Machine Number"]}\t${e.Manufacturer} > ${e["Cabinet Model"]} > ${e.THEME} > ${e.Denomination} > ${e._rtp} > ${e["Max bet"]}`)].join("\r\n");
   }
@@ -377,26 +407,45 @@ $("compare").addEventListener("click", ()=>{
   if (view.rows.length > 30){ toast("Narrow it to 30 machines or fewer"); return; }
   $("q").value = "|" + view.rows.map(e=>e["Machine Number"]).join(";"); render();
 });
-let banksOn = false;
-try { banksOn = localStorage.getItem("machineinfo.banks")==="1"; } catch {}
-const openBanks = new Set();
-function syncBanksBtn(){ $("banks").setAttribute("aria-pressed", String(banksOn)); }
-syncBanksBtn();
-$("banks").addEventListener("click", ()=>{
-  banksOn = !banksOn; syncBanksBtn();
-  try { localStorage.setItem("machineinfo.banks", banksOn?"1":"0"); } catch {}
+let banksOn = false, machsOn = false;
+try { banksOn = localStorage.getItem("machineinfo.banks")==="1"; machsOn = localStorage.getItem("machineinfo.machs")==="1"; } catch {}
+function syncToggles(){ $("banks").setAttribute("aria-pressed", String(banksOn)); $("machs").setAttribute("aria-pressed", String(machsOn)); }
+syncToggles();
+function toggle(which){
+  if (which==="banks") banksOn = !banksOn; else machsOn = !machsOn;
+  syncToggles();
+  try { localStorage.setItem("machineinfo.banks", banksOn?"1":"0"); localStorage.setItem("machineinfo.machs", machsOn?"1":"0"); } catch {}
   if (view.mode!=="list") $("q").value = "";
   render();
-});
+}
+$("banks").addEventListener("click", ()=>toggle("banks"));
+$("machs").addEventListener("click", ()=>toggle("machs"));
+
+// bottom panel with full details
+function openSheet(title, rows, bankNo){
+  const sh = $("sheet");
+  sh.innerHTML = `<div class="sheettop"><b>${h(title)}</b><button id="sheetclose">Close</button></div>
+    ${rows.map(e=>{ const was=open.has(e["Machine Number"]); open.add(e["Machine Number"]); const html=cardHtml(e); if(!was) open.delete(e["Machine Number"]); return html; }).join("")}
+    ${bankNo && rows.length>1 ? `<button class="primary" id="sheetcmp" data-bank="${h(bankNo)}">Compare bank ${h(bankNo)}</button>` : ""}`;
+  sh.hidden = false; $("sheetbg").hidden = false; sh.scrollTop = 0;
+  $("sheetclose").addEventListener("click", closeSheet);
+  const c = $("sheetcmp"); if (c) c.addEventListener("click", ()=>{ closeSheet(); $("q").value = "|" + c.dataset.bank + "*"; render(); window.scrollTo(0,0); });
+}
+function closeSheet(){ $("sheet").hidden = true; $("sheetbg").hidden = true; }
+$("sheetbg").addEventListener("click", closeSheet);
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeSheet(); });
+
 $("out").addEventListener("click", e=>{
-  const cb = e.target.closest(".cmpbank");
-  if (cb){ $("q").value = "|" + cb.dataset.bank + "*"; render(); window.scrollTo(0,0); return; }
-  const bh = e.target.closest(".bankhead");
-  if (bh){ const b = bh.dataset.bank; openBanks.has(b) ? openBanks.delete(b) : openBanks.add(b); render(); return; }
+  const n = e.target.closest(".nchip");
+  if (n){
+    if (n.dataset.id){ const r = byId.get(n.dataset.id); if (r) openSheet("Machine " + n.dataset.id, [r]); }
+    else { const no = n.dataset.bank; const rows = view.rows.filter(x=>bankOf(x["Machine Number"])===no); openSheet(`Bank ${no} · ${rows.length} machine${rows.length===1?"":"s"}`, rows, no); }
+    return;
+  }
   const c = e.target.closest(".card"); if(!c) return;
   const id = c.dataset.id; open.has(id) ? open.delete(id) : open.add(id); render();
 });
-$("out").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && (e.target.classList.contains("card")||e.target.classList.contains("bankhead"))){ e.preventDefault(); e.target.click(); } });
+$("out").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.classList.contains("card")){ e.preventDefault(); e.target.click(); } });
 $("loadbtn").addEventListener("click", ()=>$("file").click());
 $("file").addEventListener("change", async e=>{
   const f = e.target.files[0]; if(!f) return;
