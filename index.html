@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Machine Info</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Machine Info">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#eef1f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#12171d" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-512.png">
+</head>
+<body>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0}
+[hidden]{display:none!important}
+/* Layout: one-column workshop tool — sticky search bar, result cards that expand, sideways-scrolling compare table */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ed; --line:#cfd6de;
+  --fg:#18212b; --muted:#5b6876; --accent:#a8761c; --accent-ink:#ffffff; --accent-soft:#f5ead3;
+  --ok:#1f7a4a; --warn:#b3261e;
+  --sans:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
+  --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c;
+  --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
+  --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c;
+  --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--fg);font:16px/1.4 var(--sans);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 32px}
+.wrap{max-width:900px;margin:0 auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-block:14px 8px;flex-wrap:wrap}
+h1{font-size:1.35rem;font-weight:700;margin:0;letter-spacing:.01em}
+h1 span{color:var(--accent)}
+.status{display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted)}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok);flex:none}
+.dot.loaded{background:var(--accent)}
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);padding-block:8px 10px;display:grid;gap:8px}
+.searchrow{display:flex;gap:8px}
+#q{flex:1;min-width:0;font:600 1.1rem var(--mono);padding:12px 14px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface);color:var(--fg)}
+#q:focus{outline:none;border-color:var(--accent)}
+button{font:600 .95rem var(--sans);border:1.5px solid var(--line);background:var(--surface);color:var(--fg);border-radius:10px;padding:10px 14px;cursor:pointer}
+button:focus-visible,.card:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;font:500 .8rem var(--mono);padding:6px 10px;border-radius:999px;background:var(--sunk);border:1px solid var(--line);color:var(--fg)}
+.meta{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:.85rem;color:var(--muted);flex-wrap:wrap}
+.meta .actions{display:flex;gap:6px}
+.meta button{padding:6px 12px;font-size:.85rem}
+#list{display:grid;gap:8px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.card .top{display:flex;align-items:baseline;gap:10px;min-width:0}
+.num{font:600 1.05rem var(--mono);color:var(--accent);flex:none;font-variant-numeric:tabular-nums}
+.theme{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub{font-size:.88rem;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
+.sub b{color:var(--fg);font-weight:600}
+.detail{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.88rem}
+.detail dt{color:var(--muted)}
+.detail dd{margin:0;font-family:var(--mono);font-size:.82rem;overflow-wrap:anywhere}
+.ebs{display:inline-block;font:600 .7rem var(--sans);letter-spacing:.06em;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+.tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;font-size:.85rem;min-width:100%}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums}
+th{background:var(--sunk);font-weight:600;position:sticky;top:0}
+td:first-child,th:first-child{position:sticky;left:0;background:var(--sunk);font-weight:600;font-family:var(--sans)}
+td{font-family:var(--mono);font-size:.8rem}
+td.diff{background:var(--accent-soft)}
+.empty{padding:28px 8px;text-align:center;color:var(--muted)}
+.welcome{background:var(--surface);border:1px dashed var(--line);border-radius:12px;padding:20px;display:grid;gap:10px;justify-items:start}
+.welcome p{margin:0;color:var(--muted)}
+.welcome code{font-family:var(--mono);color:var(--fg)}
+.help{font-size:.88rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.help code{font-family:var(--mono);color:var(--fg);background:var(--sunk);padding:1px 5px;border-radius:4px}
+.help ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-weight:600;font-size:.9rem;z-index:20}
+@media (prefers-reduced-motion:no-preference){.card{transition:border-color .15s}}
+.card:hover{border-color:var(--accent)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Machine Info <span>Pro</span></h1>
+    <div class="status"><span class="dot" id="dot"></span><span id="src"></span></div>
+  </header>
+
+  <div class="bar">
+    <div class="searchrow">
+      <input id="q" type="search" placeholder="203*;315*;50101" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search machines">
+      <button id="clear" aria-label="Clear search">✕</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="meta">
+      <span id="count"></span>
+      <span class="actions">
+        <button id="compare">Compare</button>
+        <button id="copy" class="primary">Copy</button>
+      </span>
+    </div>
+  </div>
+
+  <main id="out"></main>
+
+  <div style="margin-top:24px;display:grid;gap:10px">
+    <details class="help">
+      <summary><b>Search syntax</b></summary>
+      <ul>
+        <li><code>HELIX</code> or <code>*SLANT*</code> matches anywhere in the record</li>
+        <li><code>201??</code> or <code>203*</code> matches machine numbers</li>
+        <li><code>203*;315*;50101</code> several searches at once (plain number = exact)</li>
+        <li><code>/regex</code> regular expression on the whole record</li>
+        <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
+        <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
+      </ul>
+    </details>
+    <div class="help">
+      <b>Update the list</b><br>
+      Load a newer <code>Machine Info.txt</code> from Files. The list is kept on this phone only and works offline.
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <input type="file" id="file" accept=".txt,text/plain" hidden><button class="primary" id="loadbtn">Load file</button>
+        <button id="reset">Remove list from phone</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<style>.btnlike{display:inline-block;font:600 .95rem var(--sans);background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:10px 14px;cursor:pointer}</style>
+
+<script>
+const KEY = "machineinfo.loaded";
+
+const FIELDS_17 = ["Manufacturer","Cabinet Model","Cabinet Code","THEME","Denomination","Machine RTP %","Max bet","Cabinet","Game Eprom 1","Base Eprom 1","Linked to EBS","Level 1","Level 2","Level 3","Level 4","Level 5","Level 6"];
+const FIELDS_16 = FIELDS_17.filter(f=>f!=="Cabinet Code");
+const ROWS = ["Machine Number", ...FIELDS_17];
+
+let entries = [], byId = new Map(), view = {mode:"list", rows:[]}, open = new Set();
+
+function parse(raw){
+  entries = []; byId = new Map();
+  for (let line of raw.split(/\r?\n/)){
+    line = line.trim(); if(!line) continue;
+    const m = line.match(/^\s*([^:]+?)\s*:\s*(.+?)\s*$/); if(!m) continue;
+    const id = m[1].trim();
+    const parts = m[2].split(">").map(s=>s.trim());
+    const names = parts.length >= 17 ? FIELDS_17 : FIELDS_16;
+    const rec = {"Machine Number": id};
+    names.forEach((n,i)=> rec[n] = parts[i] ?? "");
+    let rtp = rec["Machine RTP %"]; if(rtp && !rtp.includes("%")) rtp += "%";
+    rec._rtp = rtp;
+    rec._blob = id + " " + line + " " + ROWS.map(r=>rec[r]||"").join(" ");
+    entries.push(rec); byId.set(id, rec);
+  }
+}
+
+// ---------- matching (same rules as the AHK version) ----------
+const esc = s => s.replace(/[.^$+(){}\[\]\\|]/g, "\\$&");
+const wildRx = p => new RegExp("^" + esc(p).replace(/\*/g,".*").replace(/\?/g,".") + "$", "i");
+const norm = p => (p.includes("*")||p.includes("?")) ? p : "*"+p+"*";
+const isNum = s => /^[0-9*?]+$/.test(s);
+function safeRx(p){ try { return new RegExp(p,"i"); } catch { return null; } }
+
+function groupIds(s){
+  s = s.trim().replace(/^\|/,"").trim();
+  const toks = s.split(/[|;]/).map(t=>t.trim()).filter(Boolean);
+  return entries.filter(e=> toks.some(t => (t.includes("*")||t.includes("?")) ? wildRx(t).test(e["Machine Number"]) : e["Machine Number"]===t));
+}
+
+function search(q){
+  q = q.trim();
+  if (!q) return {mode:"list", rows:entries};
+  if (q.startsWith("/extract:")){
+    const m = q.match(/^\/extract:(.+?)=>(.*)$/);
+    if(!m) return {mode:"list", rows:entries};
+    const rx = safeRx(m[1].trim()); if(!rx) return {mode:"extract", rows:[]};
+    const repl = m[2];
+    return {mode:"extract", rows: entries.filter(e=>rx.test(e["Machine Number"])).map(e=>[e["Machine Number"], e["Machine Number"].replace(rx, repl)])};
+  }
+  const tm = q.match(/^table:\s*(.+)$/i);
+  if (tm || q.startsWith("|")){
+    const ids = groupIds(tm ? tm[1] : q);
+    return ids.length ? {mode:"table", rows:ids} : {mode:"list", rows:entries};
+  }
+  if (!q.startsWith("/") && q.includes(";")){
+    const toks = q.split(";").map(t=>t.trim()).filter(Boolean).map(t=>{
+      if (t.startsWith("/")) return {k:"rx", rx:safeRx(t.slice(1).trim())};
+      if (isNum(t)) return {k:"num", rx:wildRx(t)};
+      return {k:"txt", rx:wildRx(norm(t))};
+    });
+    const rows = entries.filter(e=>toks.some(t=> t.rx && (t.k==="num" ? t.rx.test(e["Machine Number"]) : t.rx.test(e._blob))));
+    return {mode:"list", rows, terms:toks.length};
+  }
+  if (q.startsWith("/")){
+    const rx = safeRx(q.slice(1).trim());
+    return {mode:"list", rows: rx ? entries.filter(e=>rx.test(e._blob)) : []};
+  }
+  const rx = wildRx(norm(q));
+  return {mode:"list", rows: entries.filter(e=> isNum(q) ? rx.test(e["Machine Number"]) : rx.test(e._blob))};
+}
+
+// ---------- rendering ----------
+const $ = id => document.getElementById(id);
+const h = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function render(){
+  if(!entries.length){ showWelcome(); return; }
+  view = search($("q").value);
+  const out = $("out");
+  if (view.mode==="list"){
+    $("count").textContent = `Showing ${view.rows.length} / ${entries.length}` + (view.terms ? ` (${view.terms} terms)` : "");
+    if(!view.rows.length){ out.innerHTML = `<div class="empty">No machines match that search.</div>`; return; }
+    out.innerHTML = `<div id="list">` + view.rows.map(e=>{
+      const id = e["Machine Number"], isOpen = open.has(id);
+      const ebs = /ebs/i.test(e["Linked to EBS"]) ? `<span class="ebs">EBS</span>` : "";
+      return `<div class="card" tabindex="0" data-id="${h(id)}" aria-expanded="${isOpen}">
+        <div class="top"><span class="num">${h(id)}</span><span class="theme">${h(e.THEME)}</span>${ebs}</div>
+        <div class="sub">${h(e.Manufacturer)} · ${h(e["Cabinet Model"])} · <b>${h(e.Denomination)}</b> · ${h(e._rtp)} · ${h(e["Max bet"])}</div>
+        ${isOpen ? `<dl class="detail">${ROWS.slice(1).filter(r=>r in e).map(r=>`<dt>${h(r)}</dt><dd>${h(e[r])}</dd>`).join("")}</dl>` : ""}
+      </div>`;
+    }).join("") + `</div>`;
+  } else if (view.mode==="table"){
+    $("count").textContent = `Comparing ${view.rows.length} machines · scroll sideways`;
+    const ids = view.rows;
+    out.innerHTML = `<div class="tablebox"><table><thead><tr><th>Description</th>${ids.map(e=>`<th>${h(e["Machine Number"])}</th>`).join("")}</tr></thead><tbody>` +
+      ROWS.slice(1).map(r=>{
+        const vals = ids.map(e=>e[r]??"");
+        const differs = new Set(vals).size > 1;
+        return `<tr><td>${h(r)}</td>${vals.map(v=>`<td class="${differs?"diff":""}">${h(v)}</td>`).join("")}</tr>`;
+      }).join("") + `</tbody></table></div>`;
+  } else {
+    $("count").textContent = `Extracted: ${view.rows.length}`;
+    out.innerHTML = view.rows.length ? `<div class="tablebox"><table><thead><tr><th>Source</th><th>Output</th></tr></thead><tbody>${view.rows.map(([a,b])=>`<tr><td>${h(a)}</td><td>${h(b)}</td></tr>`).join("")}</tbody></table></div>` : `<div class="empty">Nothing extracted. Check the pattern.</div>`;
+  }
+}
+
+function asText(){
+  if (view.mode==="list"){
+    return ["Machine#\tSummary", ...view.rows.map(e=>`${e["Machine Number"]}\t${e.Manufacturer} > ${e["Cabinet Model"]} > ${e.THEME} > ${e.Denomination} > ${e._rtp} > ${e["Max bet"]}`)].join("\r\n");
+  }
+  if (view.mode==="table"){
+    return [["Description", ...view.rows.map(e=>e["Machine Number"])].join("\t"),
+      ...ROWS.slice(1).map(r=>[r, ...view.rows.map(e=>e[r]??"")].join("\t"))].join("\r\n");
+  }
+  return ["Source\tOutput", ...view.rows.map(r=>r.join("\t"))].join("\r\n");
+}
+
+let tt; function toast(msg){ const t=$("toast"); t.textContent=msg; t.hidden=false; clearTimeout(tt); tt=setTimeout(()=>t.hidden=true,1600); }
+
+async function copy(){
+  if(!view.rows.length){ toast("Nothing to copy"); return; }
+  const txt = asText();
+  try { await navigator.clipboard.writeText(txt); toast("Copied"); }
+  catch {
+    const ta = document.createElement("textarea"); ta.value = txt; ta.setAttribute("readonly",""); ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, txt.length);
+    let ok=false; try{ ok=document.execCommand("copy"); }catch{}
+    ta.remove(); toast(ok ? "Copied" : "Copy blocked here");
+  }
+}
+
+function setSource(label, loaded){
+  $("src").textContent = label;
+  $("dot").classList.toggle("loaded", !!loaded);
+}
+
+function boot(){
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY) || "null"); } catch {}
+  if (saved && saved.text){ parse(saved.text); setSource(`${saved.date} · ${entries.length} machines`, true); render(); }
+  else { entries=[]; byId=new Map(); setSource("No list loaded", false); showWelcome(); }
+}
+function showWelcome(){
+  view = {mode:"list", rows:[]};
+  $("count").textContent = "";
+  $("out").innerHTML = `<div class="welcome"><b>Load your machine list to start</b>
+    <p>Save <code>Machine Info.txt</code> to your iPhone (OneDrive, iCloud Drive, or email it to yourself and save the attachment to Files), then tap the button.</p>
+    <button class="primary" id="welcomeLoad">Load Machine Info.txt</button></div>`;
+  $("welcomeLoad").addEventListener("click", ()=>$("file").click());
+}
+
+// ---------- events ----------
+const CHIPS = ["HELIX","*SLANT*","939??","203*;315*;50101","EBS","|408*","table: 841*"];
+$("chips").innerHTML = CHIPS.map(c=>`<button class="chip" data-q="${h(c)}">${h(c)}</button>`).join("");
+$("chips").addEventListener("click", e=>{ const b=e.target.closest(".chip"); if(!b) return; $("q").value=b.dataset.q; render(); });
+$("q").addEventListener("input", render);
+$("clear").addEventListener("click", ()=>{ $("q").value=""; open.clear(); render(); $("q").focus(); });
+$("copy").addEventListener("click", copy);
+$("compare").addEventListener("click", ()=>{
+  if (view.mode!=="list" || !view.rows.length){ toast("Search first, then compare"); return; }
+  if (view.rows.length > 30){ toast("Narrow it to 30 machines or fewer"); return; }
+  $("q").value = "|" + view.rows.map(e=>e["Machine Number"]).join(";"); render();
+});
+$("out").addEventListener("click", e=>{
+  const c = e.target.closest(".card"); if(!c) return;
+  const id = c.dataset.id; open.has(id) ? open.delete(id) : open.add(id); render();
+});
+$("out").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.classList.contains("card")){ e.preventDefault(); e.target.click(); } });
+$("loadbtn").addEventListener("click", ()=>$("file").click());
+$("file").addEventListener("change", async e=>{
+  const f = e.target.files[0]; if(!f) return;
+  const text = await f.text();
+  const d = new Date(f.lastModified || Date.now());
+  const date = d.toISOString().slice(0,10) + " " + d.toTimeString().slice(0,5);
+  parse(text);
+  if(!entries.length){ toast("No machines found in that file"); e.target.value=""; boot(); return; }
+  try { localStorage.setItem(KEY, JSON.stringify({text, date})); } catch {}
+  setSource(`${date} · ${entries.length} machines`, true);
+  open.clear(); render(); toast(`Loaded ${entries.length} machines`);
+  e.target.value = "";
+});
+let armed=false;
+$("reset").addEventListener("click", e=>{
+  if(!armed){ armed=true; e.target.textContent="Tap again to remove"; setTimeout(()=>{armed=false; e.target.textContent="Remove list from phone";},3000); return; }
+  try{ localStorage.removeItem(KEY); }catch{} open.clear(); armed=false; e.target.textContent="Remove list from phone"; boot(); toast("List removed");
+});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+
+boot();
+</script>
+
+</body>
+</html>
