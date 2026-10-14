@@ -119,7 +119,10 @@ td.diff{background:var(--accent-soft)}
       <ul>
         <li><code>HELIX</code> or <code>*SLANT*</code> matches anywhere in the record</li>
         <li><code>201??</code> or <code>203*</code> matches machine numbers</li>
-        <li><code>203*;315*;50101</code> several searches at once (plain number = exact)</li>
+        <li><code>203*;315*;50101</code> this <b>or</b> that (plain number = exact)</li>
+        <li><code>2* &amp; helix+ &amp; 5c</code> this <b>and</b> that, as many <code>&amp;</code> as you like (spaces ignored)</li>
+        <li><code>2* &amp; helix &amp; !slant</code> <code>!</code> means <b>not</b></li>
+        <li><code>2* &amp; helix+ ; 93*</code> mix them: <code>;</code> splits the groups</li>
         <li><code>/regex</code> regular expression on the whole record</li>
         <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
         <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
@@ -160,6 +163,7 @@ function parse(raw){
     let rtp = rec["Machine RTP %"]; if(rtp && !rtp.includes("%")) rtp += "%";
     rec._rtp = rtp;
     rec._blob = id + " " + line + " " + ROWS.map(r=>rec[r]||"").join(" ");
+    rec._flat = rec._blob.replace(/\s+/g,"");
     entries.push(rec); byId.set(id, rec);
   }
 }
@@ -192,21 +196,32 @@ function search(q){
     const ids = groupIds(tm ? tm[1] : q);
     return ids.length ? {mode:"table", rows:ids} : {mode:"list", rows:entries};
   }
-  if (!q.startsWith("/") && q.includes(";")){
-    const toks = q.split(";").map(t=>t.trim()).filter(Boolean).map(t=>{
-      if (t.startsWith("/")) return {k:"rx", rx:safeRx(t.slice(1).trim())};
-      if (isNum(t)) return {k:"num", rx:wildRx(t)};
-      return {k:"txt", rx:wildRx(norm(t))};
-    });
-    const rows = entries.filter(e=>toks.some(t=> t.rx && (t.k==="num" ? t.rx.test(e["Machine Number"]) : t.rx.test(e._blob))));
-    return {mode:"list", rows, terms:toks.length};
+  // Combined search:  ;  = OR between groups,  &  = AND inside a group,  !term = NOT
+  //   2* & helix+ & !slant ; 93*
+  if (!q.startsWith("/") && /[;&!]/.test(q)){
+    const groups = q.split(";").map(g=>g.split("&").map(t=>t.trim()).filter(Boolean)).filter(g=>g.length);
+    let termCount = 0;
+    const compiled = groups.map(g=>g.map(t=>{
+      termCount++;
+      let neg = false;
+      if (t.startsWith("!")) { neg = true; t = t.slice(1).trim(); }
+      if (!t) return {neg, test:()=>true};
+      if (t.startsWith("/")) { const rx = safeRx(t.slice(1).trim()); return {neg, test:e=> rx ? rx.test(e._blob) : false}; }
+      if (isNum(t)) { const rx = wildRx(t); return {neg, test:e=> rx.test(e["Machine Number"])}; }
+      // text: spaces ignored, so helix+ finds "HELIX +"
+      const rx = wildRx(norm(t.replace(/\s+/g,"")));
+      return {neg, test:e=> rx.test(e._flat)};
+    }));
+    const rows = entries.filter(e=> compiled.some(g=> g.every(t=> t.test(e) !== t.neg)));
+    return {mode:"list", rows, terms:termCount};
   }
   if (q.startsWith("/")){
     const rx = safeRx(q.slice(1).trim());
     return {mode:"list", rows: rx ? entries.filter(e=>rx.test(e._blob)) : []};
   }
-  const rx = wildRx(norm(q));
-  return {mode:"list", rows: entries.filter(e=> isNum(q) ? rx.test(e["Machine Number"]) : rx.test(e._blob))};
+  if (isNum(q)){ const rx = wildRx(norm(q)); return {mode:"list", rows: entries.filter(e=> rx.test(e["Machine Number"]))}; }
+  const rx = wildRx(norm(q.replace(/\s+/g,"")));
+  return {mode:"list", rows: entries.filter(e=> rx.test(e._flat))};
 }
 
 // ---------- rendering ----------
@@ -290,9 +305,21 @@ function showWelcome(){
 }
 
 // ---------- events ----------
-const CHIPS = ["HELIX","*SLANT*","939??","203*;315*;50101","EBS","|408*","table: 841*"];
+const CHIPS = ["&","!",";","*","2* & helix+","helix & !slant","203*;315*;50101","EBS","|408*"];
 $("chips").innerHTML = CHIPS.map(c=>`<button class="chip" data-q="${h(c)}">${h(c)}</button>`).join("");
-$("chips").addEventListener("click", e=>{ const b=e.target.closest(".chip"); if(!b) return; $("q").value=b.dataset.q; render(); });
+$("chips").addEventListener("click", e=>{
+  const b=e.target.closest(".chip"); if(!b) return;
+  const q=$("q"), c=b.dataset.q;
+  if (c.length===1){
+    // symbol button: add at the cursor and keep typing
+    const ins = (c==="&"||c===";") ? " "+c+" " : c;
+    const s = q.selectionStart ?? q.value.length, en = q.selectionEnd ?? q.value.length;
+    q.value = q.value.slice(0,s) + ins + q.value.slice(en);
+    const p = s + ins.length; q.focus(); try{ q.setSelectionRange(p,p); }catch{}
+  } else { q.value = c; }
+  render();
+});
+$("chips").addEventListener("mousedown", e=>{ if(e.target.closest(".chip")) e.preventDefault(); });
 $("q").addEventListener("input", render);
 $("clear").addEventListener("click", ()=>{ $("q").value=""; open.clear(); render(); $("q").focus(); });
 $("copy").addEventListener("click", copy);
