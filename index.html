@@ -61,6 +61,19 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .meta .actions{display:flex;gap:6px}
 .meta button{padding:6px 12px;font-size:.85rem}
 #list{display:grid;gap:8px}
+#banks[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+.bank{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.bankhead{display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center;padding:12px 14px;cursor:pointer}
+.bankno{font:600 1.25rem var(--mono);color:var(--accent);font-variant-numeric:tabular-nums}
+.bankinfo{min-width:0}
+.bankinfo .theme{display:block}
+.bankcount{font-size:.8rem;color:var(--muted);text-align:right;white-space:nowrap}
+.bankcount::after{content:" ▸";display:inline-block}
+.bank.open .bankcount::after{content:" ▾"}
+.mnums{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px}
+.mnums span{font:500 .78rem var(--mono);background:var(--sunk);border-radius:4px;padding:2px 6px;font-variant-numeric:tabular-nums}
+.bankbody{border-top:1px solid var(--line);padding:8px;display:grid;gap:8px;background:var(--bg)}
+.bankbody .cmpbank{justify-self:start;padding:6px 12px;font-size:.85rem}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
 .card .top{display:flex;align-items:baseline;gap:10px;min-width:0}
 .num{font:600 1.05rem var(--mono);color:var(--accent);flex:none;font-variant-numeric:tabular-nums}
@@ -105,6 +118,7 @@ td.diff{background:var(--accent-soft)}
     <div class="meta">
       <span id="count"></span>
       <span class="actions">
+        <button id="banks" aria-pressed="false">Banks</button>
         <button id="compare">Compare</button>
         <button id="copy" class="primary">Copy</button>
       </span>
@@ -124,6 +138,7 @@ td.diff{background:var(--accent-soft)}
         <li><code>2* &amp; helix &amp; !slant</code> <code>!</code> means <b>not</b></li>
         <li><code>2* &amp; helix+ ; 93*</code> mix them: <code>;</code> splits the groups</li>
         <li><code>/regex</code> regular expression on the whole record</li>
+        <li><b>Banks</b> button groups any result by bank (10101, 10103 → bank 101). Tap a bank to open it.</li>
         <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
         <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
       </ul>
@@ -228,6 +243,28 @@ function search(q){
 const $ = id => document.getElementById(id);
 const h = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
+const bankOf = id => id.length > 2 ? id.slice(0,-2) : id;
+function groupBanks(rows){
+  const map = new Map();
+  for (const e of rows){ const b = bankOf(e["Machine Number"]); if(!map.has(b)) map.set(b, []); map.get(b).push(e); }
+  return [...map].map(([no, rs])=>{
+    const uniq = k => [...new Set(rs.map(e=>e[k]))];
+    const themes = uniq("THEME"), man = uniq("Manufacturer"), cab = uniq("Cabinet Model"), den = uniq("Denomination");
+    return { no, rows: rs,
+      title: themes.length===1 ? themes[0] : `${themes.length} themes`,
+      sub: [man.length===1?man[0]:"mixed makes", cab.length===1?cab[0]:"mixed cabinets", den.length===1?den[0]:den.join("/")].join(" · ") };
+  });
+}
+function cardHtml(e){
+  const id = e["Machine Number"], isOpen = open.has(id);
+  const ebs = /ebs/i.test(e["Linked to EBS"]) ? `<span class="ebs">EBS</span>` : "";
+  return `<div class="card" tabindex="0" data-id="${h(id)}" aria-expanded="${isOpen}">
+    <div class="top"><span class="num">${h(id)}</span><span class="theme">${h(e.THEME)}</span>${ebs}</div>
+    <div class="sub">${h(e.Manufacturer)} · ${h(e["Cabinet Model"])} · <b>${h(e.Denomination)}</b> · ${h(e._rtp)} · ${h(e["Max bet"])}</div>
+    ${isOpen ? `<dl class="detail">${ROWS.slice(1).filter(r=>r in e).map(r=>`<dt>${h(r)}</dt><dd>${h(e[r])}</dd>`).join("")}</dl>` : ""}
+  </div>`;
+}
+
 function render(){
   if(!entries.length){ showWelcome(); return; }
   view = search($("q").value);
@@ -235,15 +272,24 @@ function render(){
   if (view.mode==="list"){
     $("count").textContent = `Showing ${view.rows.length} / ${entries.length}` + (view.terms ? ` (${view.terms} terms)` : "");
     if(!view.rows.length){ out.innerHTML = `<div class="empty">No machines match that search.</div>`; return; }
-    out.innerHTML = `<div id="list">` + view.rows.map(e=>{
-      const id = e["Machine Number"], isOpen = open.has(id);
-      const ebs = /ebs/i.test(e["Linked to EBS"]) ? `<span class="ebs">EBS</span>` : "";
-      return `<div class="card" tabindex="0" data-id="${h(id)}" aria-expanded="${isOpen}">
-        <div class="top"><span class="num">${h(id)}</span><span class="theme">${h(e.THEME)}</span>${ebs}</div>
-        <div class="sub">${h(e.Manufacturer)} · ${h(e["Cabinet Model"])} · <b>${h(e.Denomination)}</b> · ${h(e._rtp)} · ${h(e["Max bet"])}</div>
-        ${isOpen ? `<dl class="detail">${ROWS.slice(1).filter(r=>r in e).map(r=>`<dt>${h(r)}</dt><dd>${h(e[r])}</dd>`).join("")}</dl>` : ""}
-      </div>`;
-    }).join("") + `</div>`;
+    if (banksOn){
+      const banks = groupBanks(view.rows);
+      $("count").textContent = `${view.rows.length} machines in ${banks.length} bank${banks.length===1?"":"s"}` + (view.terms ? ` (${view.terms} terms)` : "");
+      out.innerHTML = `<div id="list">` + banks.map(b=>{
+        const isOpen = openBanks.has(b.no);
+        return `<div class="bank${isOpen?" open":""}">
+          <div class="bankhead" tabindex="0" role="button" data-bank="${h(b.no)}" aria-expanded="${isOpen}">
+            <span class="bankno">${h(b.no)}</span>
+            <span class="bankinfo"><span class="theme">${h(b.title)}</span><span class="sub">${h(b.sub)}</span></span>
+            <span class="bankcount">${b.rows.length} machine${b.rows.length===1?"":"s"}</span>
+            <span class="mnums">${b.rows.map(e=>`<span>${h(e["Machine Number"])}</span>`).join("")}</span>
+          </div>
+          ${isOpen ? `<div class="bankbody">${b.rows.map(cardHtml).join("")}${b.rows.length>1?`<button class="cmpbank" data-bank="${h(b.no)}">Compare bank ${h(b.no)}</button>`:""}</div>` : ""}
+        </div>`;
+      }).join("") + `</div>`;
+    } else {
+      out.innerHTML = `<div id="list">` + view.rows.map(cardHtml).join("") + `</div>`;
+    }
   } else if (view.mode==="table"){
     $("count").textContent = `Comparing ${view.rows.length} machines · scroll sideways`;
     const ids = view.rows;
@@ -260,6 +306,9 @@ function render(){
 }
 
 function asText(){
+  if (view.mode==="list" && banksOn){
+    return ["Bank\tMachines\tTheme\tDetails", ...groupBanks(view.rows).map(b=>`${b.no}\t${b.rows.map(e=>e["Machine Number"]).join(", ")}\t${b.title}\t${b.sub}`)].join("\r\n");
+  }
   if (view.mode==="list"){
     return ["Machine#\tSummary", ...view.rows.map(e=>`${e["Machine Number"]}\t${e.Manufacturer} > ${e["Cabinet Model"]} > ${e.THEME} > ${e.Denomination} > ${e._rtp} > ${e["Max bet"]}`)].join("\r\n");
   }
@@ -328,11 +377,26 @@ $("compare").addEventListener("click", ()=>{
   if (view.rows.length > 30){ toast("Narrow it to 30 machines or fewer"); return; }
   $("q").value = "|" + view.rows.map(e=>e["Machine Number"]).join(";"); render();
 });
+let banksOn = false;
+try { banksOn = localStorage.getItem("machineinfo.banks")==="1"; } catch {}
+const openBanks = new Set();
+function syncBanksBtn(){ $("banks").setAttribute("aria-pressed", String(banksOn)); }
+syncBanksBtn();
+$("banks").addEventListener("click", ()=>{
+  banksOn = !banksOn; syncBanksBtn();
+  try { localStorage.setItem("machineinfo.banks", banksOn?"1":"0"); } catch {}
+  if (view.mode!=="list") $("q").value = "";
+  render();
+});
 $("out").addEventListener("click", e=>{
+  const cb = e.target.closest(".cmpbank");
+  if (cb){ $("q").value = "|" + cb.dataset.bank + "*"; render(); window.scrollTo(0,0); return; }
+  const bh = e.target.closest(".bankhead");
+  if (bh){ const b = bh.dataset.bank; openBanks.has(b) ? openBanks.delete(b) : openBanks.add(b); render(); return; }
   const c = e.target.closest(".card"); if(!c) return;
   const id = c.dataset.id; open.has(id) ? open.delete(id) : open.add(id); render();
 });
-$("out").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.classList.contains("card")){ e.preventDefault(); e.target.click(); } });
+$("out").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && (e.target.classList.contains("card")||e.target.classList.contains("bankhead"))){ e.preventDefault(); e.target.click(); } });
 $("loadbtn").addEventListener("click", ()=>$("file").click());
 $("file").addEventListener("change", async e=>{
   const f = e.target.files[0]; if(!f) return;
