@@ -79,14 +79,15 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .tbank .bhead .theme{font-size:.85rem;color:var(--muted);font-weight:500}
 .tbank .nums{margin-left:18px;padding-left:12px;border-left:2px solid var(--accent-soft)}
 .tbank .nchip{padding:7px 4px;font-size:.88rem;background:var(--bg)}
-#saved{display:grid;gap:8px;margin-bottom:12px}
+#saved{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 10px;margin-bottom:12px}
+#saved>.svhead,#saved>.svnote{grid-column:1/-1}
 .svhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .svhead b{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .svhead .svbtns{display:flex;gap:6px}
 .svhead button{padding:5px 10px;font-size:.82rem}
-.svgroup{display:grid;grid-template-columns:4.4rem minmax(0,1fr);gap:8px;align-items:start}
+.svgroup{display:contents}
 .svgroup .gname{padding-top:8px}
-.svgroup .gname{font-size:.78rem;font-weight:600;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.svgroup .gname{font-size:.78rem;font-weight:600;color:var(--muted);max-width:6.5rem;overflow-wrap:anywhere;line-height:1.25}
 .svrow{display:flex;flex-wrap:wrap;gap:6px;padding-block:1px}
 .svrow::-webkit-scrollbar{display:none}
 .svchip{flex:none;font:600 .85rem var(--sans);padding:7px 11px;min-width:2.8rem;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
