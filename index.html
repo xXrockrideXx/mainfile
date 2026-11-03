@@ -84,11 +84,13 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .svhead b{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .svhead .svbtns{display:flex;gap:6px}
 .svhead button{padding:5px 10px;font-size:.82rem}
-.svgroup{display:grid;grid-template-columns:5.2rem minmax(0,1fr);gap:8px;align-items:center}
+.svgroup{display:grid;grid-template-columns:4.4rem minmax(0,1fr);gap:8px;align-items:start}
+.svgroup .gname{padding-top:8px}
 .svgroup .gname{font-size:.78rem;font-weight:600;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.svrow{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-block:1px}
+.svrow{display:flex;flex-wrap:wrap;gap:6px;padding-block:1px}
 .svrow::-webkit-scrollbar{display:none}
-.svchip{flex:none;font:600 .85rem var(--sans);padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.svchip{flex:none;font:600 .85rem var(--sans);padding:7px 11px;min-width:2.8rem;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.svchip:disabled{opacity:.45;cursor:default;border-style:dashed}
 .svchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .svnote{font-size:.8rem;color:var(--accent);font-weight:600}
 .ed{display:grid;gap:12px}
@@ -98,7 +100,9 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .ed input.mono{font-family:var(--mono);font-size:.88rem}
 .ed input:focus{outline:none;border-color:var(--accent)}
 .ghead input{flex:1;font-weight:700}
-.eitem{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px;align-items:center}
+.eitem{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr) auto;gap:6px;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.eitem:last-child{border-bottom:0;padding-bottom:0}
+.eitem .q{grid-column:1/-1}
 .eitem button,.ghead button,.eadd button{padding:7px 10px;font-size:.85rem}
 .eadd{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px}
 button.danger{color:var(--warn)}
@@ -190,6 +194,8 @@ td.diff{background:var(--accent-soft)}
         <li><code>/regex</code> regular expression on the whole record</li>
         <li><b>Saved</b>: tap to filter by your saved searches (Denoms, Areas, your own groups). Same group = or, different groups = and. <b>Edit</b> to add your own.</li>
         <li><b>Machines</b> shows only machine numbers. <b>Banks</b> shows only banks (10101, 10103 → bank 101). Both on: machines indented under their bank. Tap any number for its details.</li>
+        <li><code>denom:1c</code> exactly 1c</li>
+        <li><code>bank:830-899</code> banks in a range, <code>bank:510</code> one bank, <code>bank:511+</code> from 511 up. Mix with the rest: <code>bank:150-199 &amp; 1c</code></li>
         <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
         <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
       </ul>
@@ -268,7 +274,7 @@ function search(q){
   }
   // Combined search:  ;  = OR between groups,  &  = AND inside a group,  !term = NOT
   //   2* & helix+ & !slant ; 93*
-  if (!q.startsWith("/") && /[;&!]/.test(q)){
+  if (!q.startsWith("/") && (/[;&!]/.test(q) || /\b(bank|denom):/i.test(q))){
     const groups = q.split(";").map(g=>g.split("&").map(t=>t.trim()).filter(Boolean)).filter(g=>g.length);
     let termCount = 0;
     const compiled = groups.map(g=>g.map(t=>{
@@ -277,6 +283,21 @@ function search(q){
       if (t.startsWith("!")) { neg = true; t = t.slice(1).trim(); }
       if (!t) return {neg, test:()=>true};
       if (t.startsWith("/")) { const rx = safeRx(t.slice(1).trim()); return {neg, test:e=> rx ? rx.test(e._blob) : false}; }
+      const dm = t.match(/^denom:\s*(.+)$/i);
+      if (dm){
+        const want = dm[1].trim().toLowerCase();
+        return {neg, test:e=>{
+          const d = String(e.Denomination ?? "").trim();
+          const parts = d.split(/[|\/,;&+]|\s+/).map(x=>x.trim()).filter(Boolean);
+          if (want==="multi") return /multi/i.test(d) || parts.length > 1;
+          return d.toLowerCase() === want;
+        }};
+      }
+      const bm = t.match(/^bank:\s*(\d+)\s*(?:(-)\s*(\d+)|(\+))?$/i);
+      if (bm){
+        const lo = +bm[1], hi = bm[4] ? Infinity : bm[2] ? +bm[3] : lo;
+        return {neg, test:e=>{ const id = e["Machine Number"]; if (!/^\d{3,}$/.test(id)) return false; const b = +id.slice(0,-2); return b>=lo && b<=hi; }};
+      }
       if (isNum(t)) { const rx = wildRx(t); return {neg, test:e=> rx.test(e["Machine Number"])}; }
       // text: spaces ignored, so helix+ finds "HELIX +"
       const rx = wildRx(norm(t.replace(/\s+/g,"")));
@@ -300,22 +321,68 @@ function search(q){
 const SKEY = "machineinfo.saved", AKEY = "machineinfo.active";
 const uid = () => Math.random().toString(36).slice(2,9);
 const denomQ = d => `/> ${d.replace(/[.^$+(){}\[\]\\|*?]/g,"\\$&")} >`;
+const AREA_DEFAULTS = [
+  ["A1","Area 1 (excl. sun lounge)","bank:100-149"],
+  ["A2","Area 2","2*"], ["A3","Area 3","3*"], ["A4","Area 4","4*"], ["A5","Area 5","5*"],
+  ["A6","Area 6","6*"], ["A7","Area 7","7*"],
+  ["A8","Area 8 (excl. sun lounge)","bank:800-829"],
+  ["A9","Area 9","9*"],
+  ["MFNS","Mainfloor Non-smoking","bank:100-149;2*;3*;4*"],
+  ["MFSM","Mainfloor Smoking","7*;bank:800-829;9*"],
+  ["NSSL","Non-smoking Sun Lounge","bank:150-199"],
+  ["SMSL","Smoking Sun Lounge","bank:830-899"],
+  ["PR","Prive","5*"],
+  ["PRNS","Prive Non-smoking (501-509)","bank:501-509"],
+  ["PRPR","Prive Private Room (510)","bank:510"],
+  ["PRSM","Prive Smoking (511+)","bank:511-599"],
+  ["WW","Walkway","6*"]
+];
+const multiItem = () => ({ id: uid(), name: "Multi", full: "Multi-denom machines (coming soon)", q: "" });
+const areaItems = () => AREA_DEFAULTS.map(([name, full, q])=>({ id: uid(), name, full, q }));
 function defaultSaved(){
-  return { groups: [
-    { id: uid(), name: "Denoms", items: ["1c","2c","5c","10c","R1","R2","R5","R10"].map(d=>({ id: uid(), name: d, q: denomQ(d) })) },
-    { id: uid(), name: "Areas",  items: [1,2,3,4,5,6,7,8,9].map(n=>({ id: uid(), name: "Area " + n, q: n + "*" })) },
-    { id: uid(), name: "My areas", items: [ { id: uid(), name: "Non-smoking", q: "1*;2*;3*;4*" } ] }
+  return { v: 4, groups: [
+    { id: uid(), name: "Denoms", items: [multiItem(), ...["1c","2c","5c","10c","R1","R2","R5","R10"].map(d=>({ id: uid(), name: d, q: denomQ(d) }))] },
+    { id: uid(), name: "Areas", items: areaItems() }
   ]};
+}
+// Older versions had "Areas" (Area 1-9) and "My areas" (Non-smoking): swap in the new Areas group,
+// keeping anything you added to those groups yourself.
+function migrateSaved(sv){
+  if (!(sv.v >= 2)) sv = migrateV1(sv);
+  if (sv.v < 3){
+    const d = sv.groups.find(g=>g.name==="Denoms");
+    if (d && !d.items.some(i=>i.name.toLowerCase()==="multi")) d.items.unshift(multiItem());
+    sv.v = 3;
+  }
+  if (sv.v < 4){
+    for (const it of sv.groups.flatMap(g=>g.items)) if (it.name==="Multi" && it.q==="denom:multi"){ it.q = ""; it.full = "Multi-denom machines (coming soon)"; }
+    sv.v = 4;
+  }
+  return sv;
+}
+function migrateV1(sv){
+  const OLD = new Set(["Area 1","Area 2","Area 3","Area 4","Area 5","Area 6","Area 7","Area 8","Area 9","Non-smoking"]);
+  const yours = [];
+  let at = -1;
+  sv.groups = sv.groups.filter((g,i)=>{
+    if (g.name==="Areas" || g.name==="My areas"){ if (at<0) at = i; yours.push(...g.items.filter(it=>!OLD.has(it.name))); return false; }
+    return true;
+  });
+  sv.groups.splice(at<0 ? sv.groups.length : at, 0, { id: uid(), name: "Areas", items: [...areaItems(), ...yours] });
+  sv.v = 2;
+  return sv;
 }
 let saved, active;
 try { saved = JSON.parse(localStorage.getItem(SKEY) || "null"); } catch {}
-if (!saved || !Array.isArray(saved.groups)) saved = defaultSaved();
+if (!saved || !Array.isArray(saved.groups)) saved = defaultSaved(); else saved = migrateSaved(saved);
 try { active = new Set(JSON.parse(localStorage.getItem(AKEY) || "[]")); } catch { active = new Set(); }
+{ const ok = new Set(saved.groups.flatMap(g=>g.items.map(i=>i.id))); active = new Set([...active].filter(id=>ok.has(id))); }
+try { localStorage.setItem(SKEY, JSON.stringify(saved)); } catch {}
 let savedOpen = true;
 try { savedOpen = localStorage.getItem("machineinfo.savedopen") !== "0"; } catch {}
 function storeSaved(){ try { localStorage.setItem(SKEY, JSON.stringify(saved)); localStorage.setItem(AKEY, JSON.stringify([...active])); } catch {} }
 function allItems(){ return saved.groups.flatMap(g=>g.items); }
-function activeNames(){ return allItems().filter(i=>active.has(i.id)).map(i=>i.name); }
+function activeNames(){ return allItems().filter(i=>i.q && active.has(i.id)).map(i=>i.full ? `${i.name} (${i.full})` : i.name); }
 
 const matchCache = new Map();
 function itemIds(q){
@@ -328,7 +395,7 @@ function applySaved(v){
   if (v.mode!=="list") return v;
   let rows = v.rows;
   for (const g of saved.groups){
-    const picks = g.items.filter(i=>active.has(i.id));
+    const picks = g.items.filter(i=>i.q && active.has(i.id));
     if (!picks.length) continue;
     const sets = picks.map(i=>itemIds(i.q));
     rows = rows.filter(e=> sets.some(s=> s.has(e["Machine Number"])));
@@ -345,7 +412,7 @@ function renderSaved(){
       <button id="svedit">Edit</button>
       <button id="svtoggle" aria-expanded="${savedOpen}">${savedOpen ? "Hide" : "Show"}</button></span></div>` +
     (savedOpen ? saved.groups.filter(g=>g.items.length).map(g=>`<div class="svgroup"><span class="gname">${h(g.name)}</span><div class="svrow">${
-      g.items.map(i=>`<button class="svchip" data-sv="${h(i.id)}" aria-pressed="${active.has(i.id)}" title="${h(i.q)}">${h(i.name)}</button>`).join("")
+      g.items.map(i=>`<button class="svchip" data-sv="${h(i.id)}" aria-pressed="${active.has(i.id)}"${i.q ? "" : " disabled"} title="${h(i.full ? i.full + " · " + i.q : i.q)}" aria-label="${h(i.full || i.name)}">${h(i.name)}</button>`).join("")
     }</div></div>`).join("") : (n ? `<span class="svnote">${h(activeNames().join(" + "))}</span>` : ""));
 }
 
@@ -356,7 +423,7 @@ function openEditor(){
   sh.innerHTML = `<div class="sheettop"><b>Saved searches</b><button id="sheetclose">Done</button></div>
     <div class="ed">
       ${cur ? `<div class="edgroup"><b style="font-size:.9rem">Save current search</b>
-        <div class="eadd"><input id="scname" placeholder="Name" value="">
+        <div class="eadd"><input id="scname" placeholder="Short name" value="">
         <input class="mono" value="${h(cur)}" disabled aria-label="Search to save">
         <select id="scgroup" aria-label="Group">${saved.groups.map((g,i,a)=>`<option value="${h(g.id)}"${i===a.length-1?" selected":""}>${h(g.name)}</option>`).join("")}</select></div>
         <button class="primary" id="scsave" style="justify-self:start">Save</button></div>` : ""}
@@ -364,15 +431,17 @@ function openEditor(){
         <div class="ghead"><input data-gname="${h(g.id)}" value="${h(g.name)}" aria-label="Group name">
           <button class="danger" data-delg="${h(g.id)}">${delArm==="g"+g.id ? "Tap again" : "Delete group"}</button></div>
         ${g.items.map(i=>`<div class="eitem">
-          <input data-iname="${h(i.id)}" value="${h(i.name)}" aria-label="Name">
-          <input class="mono" data-iq="${h(i.id)}" value="${h(i.q)}" aria-label="Search" autocapitalize="off" autocorrect="off" spellcheck="false">
-          <button class="danger" data-deli="${h(i.id)}" aria-label="Delete ${h(i.name)}">✕</button></div>`).join("")}
-        <div class="eadd"><input data-newname="${h(g.id)}" placeholder="New name">
-          <input class="mono" data-newq="${h(g.id)}" placeholder="Search, e.g. 1*;2*" autocapitalize="off" autocorrect="off" spellcheck="false">
-          <button data-add="${h(g.id)}">Add</button></div>
+          <input data-iname="${h(i.id)}" value="${h(i.name)}" aria-label="Short name">
+          <input data-ifull="${h(i.id)}" value="${h(i.full||"")}" placeholder="Full name (optional)" aria-label="Full name">
+          <button class="danger" data-deli="${h(i.id)}" aria-label="Delete ${h(i.name)}">✕</button>
+          <input class="mono q" data-iq="${h(i.id)}" value="${h(i.q)}" placeholder="No search yet (label only)" aria-label="Search" autocapitalize="off" autocorrect="off" spellcheck="false"></div>`).join("")}
+        <div class="eitem"><input data-newname="${h(g.id)}" placeholder="Short name">
+          <input data-newfull="${h(g.id)}" placeholder="Full name (optional)">
+          <button data-add="${h(g.id)}">Add</button>
+          <input class="mono q" data-newq="${h(g.id)}" placeholder="Search, e.g. 1*;2* or bank:830-899" autocapitalize="off" autocorrect="off" spellcheck="false"></div>
       </div>`).join("")}
       <div class="edgroup"><div class="ghead"><input id="newgroup" placeholder="New group name"><button id="addgroup">Add group</button></div></div>
-      <p class="hint">Any search works here: <code>1*;2*;3*;4*</code>, <code>helix+ &amp; !slant</code>, <code>/&gt; 1c &gt;</code>. Picks in the same group mean <b>or</b>; picks across groups mean <b>and</b>.</p>
+      <p class="hint">Any search works here: <code>1*;2*;3*;4*</code>, <code>bank:830-899</code>, <code>bank:510</code>, <code>bank:511+</code>, <code>helix+ &amp; !slant</code>, <code>/&gt; 1c &gt;</code>. Picks in the same group mean <b>or</b>; picks across groups mean <b>and</b>.</p>
       <div class="edfoot"><button id="resetsv" class="danger">${delArm==="reset" ? "Tap again to reset" : "Reset to defaults"}</button></div>
     </div>`;
   sh.hidden = false; $("sheetbg").hidden = false;
@@ -382,8 +451,9 @@ function edChanged(){ matchCache.clear(); storeSaved(); render(); }
 document.getElementById("sheet").addEventListener("change", e=>{
   const t = e.target;
   if (t.dataset.gname){ const g = saved.groups.find(x=>x.id===t.dataset.gname); if (g && t.value.trim()){ g.name = t.value.trim(); edChanged(); } }
-  if (t.dataset.iname || t.dataset.iq){
-    const it = allItems().find(x=>x.id===(t.dataset.iname||t.dataset.iq)); if (!it) return;
+  if (t.dataset.iname || t.dataset.iq || t.dataset.ifull!==undefined){
+    const it = allItems().find(x=>x.id===(t.dataset.iname||t.dataset.iq||t.dataset.ifull)); if (!it) return;
+    if (t.dataset.ifull!==undefined) it.full = t.value.trim();
     if (t.dataset.iname && t.value.trim()) it.name = t.value.trim();
     if (t.dataset.iq && t.value.trim()) it.q = t.value.trim();
     edChanged();
@@ -402,8 +472,9 @@ document.getElementById("sheet").addEventListener("click", e=>{
     const g = saved.groups.find(x=>x.id===t.dataset.add);
     const nm = $("sheet").querySelector(`[data-newname="${t.dataset.add}"]`).value.trim();
     const q = $("sheet").querySelector(`[data-newq="${t.dataset.add}"]`).value.trim();
+    const full = $("sheet").querySelector(`[data-newfull="${t.dataset.add}"]`).value.trim();
     if (!nm || !q){ toast("Fill in a name and a search"); return; }
-    g.items.push({ id: uid(), name: nm, q }); edChanged(); reopen(); return;
+    g.items.push({ id: uid(), name: nm, full, q }); edChanged(); reopen(); return;
   }
   if (t.dataset.deli){ for (const g of saved.groups) g.items = g.items.filter(i=>i.id!==t.dataset.deli); active.delete(t.dataset.deli); edChanged(); reopen(); return; }
   if (t.dataset.delg){
