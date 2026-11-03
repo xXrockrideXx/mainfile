@@ -24,6 +24,7 @@ body{margin:0}
 :root{
   --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ed; --line:#cfd6de;
   --fg:#18212b; --muted:#5b6876; --accent:#a8761c; --accent-ink:#ffffff; --accent-soft:#f5ead3; --pps:#0f6e74; --pps-soft:#d6eff0;
+  --d1c:#23803a; --d2c:#5f7410; --d5c:#1d5fc2; --d10c:#6a3fb8; --dr1:#a32d78; --dr2:#b3261e; --dr5:#b45309; --dr10:#7a5230; --dother:#5b6876;
   --ok:#1f7a4a; --warn:#b3261e;
   --sans:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
@@ -31,10 +32,12 @@ body{margin:0}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
   --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c; --pps:#5fd0d6; --pps-soft:#16383b;
+  --d1c:#74d48a; --d2c:#c2d65c; --d5c:#80b2ff; --d10c:#bca0ff; --dr1:#f290cb; --dr2:#ff8f86; --dr5:#ffb46b; --dr10:#dcae80; --dother:#94a2b1;
   --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
   --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c; --pps:#5fd0d6; --pps-soft:#16383b;
+  --d1c:#74d48a; --d2c:#c2d65c; --d5c:#80b2ff; --d10c:#bca0ff; --dr1:#f290cb; --dr2:#ff8f86; --dr5:#ffb46b; --dr10:#dcae80; --dother:#94a2b1;
   --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -73,6 +76,15 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .nchip{font:600 .95rem var(--mono);font-variant-numeric:tabular-nums;padding:9px 4px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--fg);text-align:center;cursor:pointer}
 .nchip.bk{color:var(--accent)}
 .nchip small{display:block;font:500 .68rem var(--sans);color:var(--muted);margin-top:1px}
+/* denomination tag */
+.dn{--c:var(--dother);display:inline-block;font:700 .72rem var(--sans);letter-spacing:.03em;padding:1px 6px;border-radius:4px;color:var(--c);
+  background:var(--sunk);background:color-mix(in srgb, var(--c) 16%, transparent);flex:none;vertical-align:middle;white-space:nowrap}
+.d-1c{--c:var(--d1c)} .d-2c{--c:var(--d2c)} .d-5c{--c:var(--d5c)} .d-10c{--c:var(--d10c)}
+.d-r1{--c:var(--dr1)} .d-r2{--c:var(--dr2)} .d-r5{--c:var(--dr5)} .d-r10{--c:var(--dr10)}
+/* machine chip: denom on top, number under it, both left-aligned */
+.nchip.m{text-align:left;padding:6px 8px 7px;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+.nchip.m .dn{font-size:.66rem;padding:0 5px}
+.nchip.m .mn{line-height:1.1}
 .tree{display:grid;gap:10px}
 .tbank{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:grid;gap:8px}
 .tbank .bhead{display:flex;align-items:baseline;gap:10px;min-width:0}
@@ -537,12 +549,18 @@ function flagOf(e){
   return "";
 }
 function flagHtml(f){ return f==="pps" ? `<span class="ebs pps">EBS PPS</span>` : f==="ebs" ? `<span class="ebs">EBS</span>` : ""; }
+function denomClass(d){
+  const k = String(d ?? "").trim().toLowerCase();
+  return ["1c","2c","5c","10c","r1","r2","r5","r10"].includes(k) ? "d-" + k : "d-other";
+}
+function denomTag(e){ const d = String(e.Denomination ?? "").trim(); return d ? `<span class="dn ${denomClass(d)}">${h(d)}</span>` : ""; }
+function mchip(e){ const id = e["Machine Number"]; return `<button class="nchip m" data-id="${h(id)}">${denomTag(e) || '<span class="dn">&nbsp;</span>'}<span class="mn">${h(id)}</span></button>`; }
 function cardHtml(e){
   const id = e["Machine Number"], isOpen = open.has(id);
   const ebs = flagHtml(flagOf(e));
   return `<div class="card" tabindex="0" data-id="${h(id)}" aria-expanded="${isOpen}">
-    <div class="top"><span class="num">${h(id)}</span><span class="theme">${h(e.THEME)}</span>${ebs}</div>
-    <div class="sub">${h(e.Manufacturer)} · ${h(e["Cabinet Model"])} · <b>${h(e.Denomination)}</b> · ${h(e._rtp)} · ${h(e["Max bet"])}</div>
+    <div class="top"><span class="num">${h(id)}</span>${denomTag(e)}<span class="theme">${h(e.THEME)}</span>${ebs}</div>
+    <div class="sub">${h(e.Manufacturer)} · ${h(e["Cabinet Model"])} · ${h(e._rtp)} · ${h(e["Max bet"])}</div>
     ${isOpen ? `<dl class="detail">${ROWS.slice(1).filter(r=>r in e).map(r=>`<dt>${h(r)}</dt><dd>${h(e[r])}</dd>`).join("")}</dl>` : ""}
   </div>`;
 }
@@ -569,14 +587,14 @@ function renderInner(){
         // banks with their machines indented underneath
         out.innerHTML = `<div class="tree">` + banks.map(b=>`<div class="tbank">
             <div class="bhead"><button class="nchip bk" data-bank="${h(b.no)}">${h(b.no)}</button><span class="theme">${h(b.title)} · ${b.rows.length}</span>${[...new Set(b.rows.map(flagOf))].filter(Boolean).sort().map(flagHtml).join("")}</div>
-            <div class="nums">${b.rows.map(e=>`<button class="nchip" data-id="${h(e["Machine Number"])}">${h(e["Machine Number"])}</button>`).join("")}</div>
+            <div class="nums">${b.rows.map(e=>`${mchip(e)}`).join("")}</div>
           </div>`).join("") + `</div>`;
       } else {
         out.innerHTML = `<div class="nums">` + banks.map(b=>`<button class="nchip bk" data-bank="${h(b.no)}">${h(b.no)}<small>${b.rows.length} machine${b.rows.length===1?"":"s"}</small></button>`).join("") + `</div>`;
       }
     } else if (machsOn){
       $("count").textContent = `Showing ${view.rows.length} / ${entries.length}${terms}`;
-      out.innerHTML = `<div class="nums">` + view.rows.map(e=>`<button class="nchip" data-id="${h(e["Machine Number"])}">${h(e["Machine Number"])}</button>`).join("") + `</div>`;
+      out.innerHTML = `<div class="nums">` + view.rows.map(e=>`${mchip(e)}`).join("") + `</div>`;
     } else {
       $("count").textContent = `Showing ${view.rows.length} / ${entries.length}${terms}`;
       out.innerHTML = `<div id="list">` + view.rows.map(cardHtml).join("") + `</div>`;
