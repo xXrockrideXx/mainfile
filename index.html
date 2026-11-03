@@ -79,6 +79,31 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .tbank .bhead .theme{font-size:.85rem;color:var(--muted);font-weight:500}
 .tbank .nums{margin-left:18px;padding-left:12px;border-left:2px solid var(--accent-soft)}
 .tbank .nchip{padding:7px 4px;font-size:.88rem;background:var(--bg)}
+#saved{display:grid;gap:8px;margin-bottom:12px}
+.svhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.svhead b{font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.svhead .svbtns{display:flex;gap:6px}
+.svhead button{padding:5px 10px;font-size:.82rem}
+.svgroup{display:grid;grid-template-columns:5.2rem minmax(0,1fr);gap:8px;align-items:center}
+.svgroup .gname{font-size:.78rem;font-weight:600;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.svrow{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-block:1px}
+.svrow::-webkit-scrollbar{display:none}
+.svchip{flex:none;font:600 .85rem var(--sans);padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--fg)}
+.svchip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.svnote{font-size:.8rem;color:var(--accent);font-weight:600}
+.ed{display:grid;gap:12px}
+.edgroup{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:8px}
+.edgroup .ghead{display:flex;gap:6px;align-items:center}
+.ed input,.ed select{min-width:0;font:500 .95rem var(--sans);padding:8px 10px;border:1.5px solid var(--line);border-radius:8px;background:var(--bg);color:var(--fg)}
+.ed input.mono{font-family:var(--mono);font-size:.88rem}
+.ed input:focus{outline:none;border-color:var(--accent)}
+.ghead input{flex:1;font-weight:700}
+.eitem{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px;align-items:center}
+.eitem button,.ghead button,.eadd button{padding:7px 10px;font-size:.85rem}
+.eadd{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px}
+button.danger{color:var(--warn)}
+.edfoot{display:flex;gap:8px;flex-wrap:wrap}
+.hint{font-size:.8rem;color:var(--muted);margin:0}
 #sheetbg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:30}
 #sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;max-height:80vh;overflow:auto;background:var(--bg);border-radius:16px 16px 0 0;
   padding:14px max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));display:grid;gap:10px}
@@ -149,6 +174,7 @@ td.diff{background:var(--accent-soft)}
     </div>
   </div>
 
+  <section id="saved" aria-label="Saved searches"></section>
   <main id="out"></main>
 
   <div style="margin-top:24px;display:grid;gap:10px">
@@ -162,6 +188,7 @@ td.diff{background:var(--accent-soft)}
         <li><code>2* &amp; helix &amp; !slant</code> <code>!</code> means <b>not</b></li>
         <li><code>2* &amp; helix+ ; 93*</code> mix them: <code>;</code> splits the groups</li>
         <li><code>/regex</code> regular expression on the whole record</li>
+        <li><b>Saved</b>: tap to filter by your saved searches (Denoms, Areas, your own groups). Same group = or, different groups = and. <b>Edit</b> to add your own.</li>
         <li><b>Machines</b> shows only machine numbers. <b>Banks</b> shows only banks (10101, 10103 → bank 101). Both on: machines indented under their bank. Tap any number for its details.</li>
         <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
         <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
@@ -192,7 +219,7 @@ const ROWS = ["Machine Number", ...FIELDS_17];
 let entries = [], byId = new Map(), view = {mode:"list", rows:[]}, open = new Set();
 
 function parse(raw){
-  entries = []; byId = new Map();
+  entries = []; byId = new Map(); try { matchCache.clear(); } catch {}
   for (let line of raw.split(/\r?\n/)){
     line = line.trim(); if(!line) continue;
     const m = line.match(/^\s*([^:]+?)\s*:\s*(.+?)\s*$/); if(!m) continue;
@@ -267,6 +294,134 @@ function search(q){
   return {mode:"list", rows: entries.filter(e=> rx.test(e._flat))};
 }
 
+// ---------- saved searches ----------
+// Groups of one-tap searches. Inside a group, picks are OR'd; across groups they're AND'd.
+// They filter whatever is typed in the search box.
+const SKEY = "machineinfo.saved", AKEY = "machineinfo.active";
+const uid = () => Math.random().toString(36).slice(2,9);
+const denomQ = d => `/> ${d.replace(/[.^$+(){}\[\]\\|*?]/g,"\\$&")} >`;
+function defaultSaved(){
+  return { groups: [
+    { id: uid(), name: "Denoms", items: ["1c","2c","5c","10c","R1","R2","R5","R10"].map(d=>({ id: uid(), name: d, q: denomQ(d) })) },
+    { id: uid(), name: "Areas",  items: [1,2,3,4,5,6,7,8,9].map(n=>({ id: uid(), name: "Area " + n, q: n + "*" })) },
+    { id: uid(), name: "My areas", items: [ { id: uid(), name: "Non-smoking", q: "1*;2*;3*;4*" } ] }
+  ]};
+}
+let saved, active;
+try { saved = JSON.parse(localStorage.getItem(SKEY) || "null"); } catch {}
+if (!saved || !Array.isArray(saved.groups)) saved = defaultSaved();
+try { active = new Set(JSON.parse(localStorage.getItem(AKEY) || "[]")); } catch { active = new Set(); }
+let savedOpen = true;
+try { savedOpen = localStorage.getItem("machineinfo.savedopen") !== "0"; } catch {}
+function storeSaved(){ try { localStorage.setItem(SKEY, JSON.stringify(saved)); localStorage.setItem(AKEY, JSON.stringify([...active])); } catch {} }
+function allItems(){ return saved.groups.flatMap(g=>g.items); }
+function activeNames(){ return allItems().filter(i=>active.has(i.id)).map(i=>i.name); }
+
+const matchCache = new Map();
+function itemIds(q){
+  if (matchCache.has(q)) return matchCache.get(q);
+  const r = search(q);
+  const ids = new Set(r.mode==="extract" ? [] : r.rows.map(e=>e["Machine Number"]));
+  matchCache.set(q, ids); return ids;
+}
+function applySaved(v){
+  if (v.mode!=="list") return v;
+  let rows = v.rows;
+  for (const g of saved.groups){
+    const picks = g.items.filter(i=>active.has(i.id));
+    if (!picks.length) continue;
+    const sets = picks.map(i=>itemIds(i.q));
+    rows = rows.filter(e=> sets.some(s=> s.has(e["Machine Number"])));
+  }
+  return {...v, rows};
+}
+
+function renderSaved(){
+  const box = $("saved");
+  if (!entries.length){ box.innerHTML = ""; return; }
+  const n = activeNames().length;
+  box.innerHTML = `<div class="svhead"><b>Saved</b><span class="svbtns">
+      ${n ? `<button id="svclear">Clear ${n}</button>` : ""}
+      <button id="svedit">Edit</button>
+      <button id="svtoggle" aria-expanded="${savedOpen}">${savedOpen ? "Hide" : "Show"}</button></span></div>` +
+    (savedOpen ? saved.groups.filter(g=>g.items.length).map(g=>`<div class="svgroup"><span class="gname">${h(g.name)}</span><div class="svrow">${
+      g.items.map(i=>`<button class="svchip" data-sv="${h(i.id)}" aria-pressed="${active.has(i.id)}" title="${h(i.q)}">${h(i.name)}</button>`).join("")
+    }</div></div>`).join("") : (n ? `<span class="svnote">${h(activeNames().join(" + "))}</span>` : ""));
+}
+
+// ----- editor (bottom panel) -----
+let delArm = null;
+function openEditor(){
+  const sh = $("sheet"); const cur = $("q").value.trim();
+  sh.innerHTML = `<div class="sheettop"><b>Saved searches</b><button id="sheetclose">Done</button></div>
+    <div class="ed">
+      ${cur ? `<div class="edgroup"><b style="font-size:.9rem">Save current search</b>
+        <div class="eadd"><input id="scname" placeholder="Name" value="">
+        <input class="mono" value="${h(cur)}" disabled aria-label="Search to save">
+        <select id="scgroup" aria-label="Group">${saved.groups.map((g,i,a)=>`<option value="${h(g.id)}"${i===a.length-1?" selected":""}>${h(g.name)}</option>`).join("")}</select></div>
+        <button class="primary" id="scsave" style="justify-self:start">Save</button></div>` : ""}
+      ${saved.groups.map(g=>`<div class="edgroup" data-g="${h(g.id)}">
+        <div class="ghead"><input data-gname="${h(g.id)}" value="${h(g.name)}" aria-label="Group name">
+          <button class="danger" data-delg="${h(g.id)}">${delArm==="g"+g.id ? "Tap again" : "Delete group"}</button></div>
+        ${g.items.map(i=>`<div class="eitem">
+          <input data-iname="${h(i.id)}" value="${h(i.name)}" aria-label="Name">
+          <input class="mono" data-iq="${h(i.id)}" value="${h(i.q)}" aria-label="Search" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button class="danger" data-deli="${h(i.id)}" aria-label="Delete ${h(i.name)}">✕</button></div>`).join("")}
+        <div class="eadd"><input data-newname="${h(g.id)}" placeholder="New name">
+          <input class="mono" data-newq="${h(g.id)}" placeholder="Search, e.g. 1*;2*" autocapitalize="off" autocorrect="off" spellcheck="false">
+          <button data-add="${h(g.id)}">Add</button></div>
+      </div>`).join("")}
+      <div class="edgroup"><div class="ghead"><input id="newgroup" placeholder="New group name"><button id="addgroup">Add group</button></div></div>
+      <p class="hint">Any search works here: <code>1*;2*;3*;4*</code>, <code>helix+ &amp; !slant</code>, <code>/&gt; 1c &gt;</code>. Picks in the same group mean <b>or</b>; picks across groups mean <b>and</b>.</p>
+      <div class="edfoot"><button id="resetsv" class="danger">${delArm==="reset" ? "Tap again to reset" : "Reset to defaults"}</button></div>
+    </div>`;
+  sh.hidden = false; $("sheetbg").hidden = false;
+  $("sheetclose").addEventListener("click", closeSheet);
+}
+function edChanged(){ matchCache.clear(); storeSaved(); render(); }
+document.getElementById("sheet").addEventListener("change", e=>{
+  const t = e.target;
+  if (t.dataset.gname){ const g = saved.groups.find(x=>x.id===t.dataset.gname); if (g && t.value.trim()){ g.name = t.value.trim(); edChanged(); } }
+  if (t.dataset.iname || t.dataset.iq){
+    const it = allItems().find(x=>x.id===(t.dataset.iname||t.dataset.iq)); if (!it) return;
+    if (t.dataset.iname && t.value.trim()) it.name = t.value.trim();
+    if (t.dataset.iq && t.value.trim()) it.q = t.value.trim();
+    edChanged();
+  }
+});
+document.getElementById("sheet").addEventListener("click", e=>{
+  const t = e.target.closest("button"); if (!t || !$("sheet").querySelector(".ed")) return;
+  const keepScroll = $("sheet").scrollTop;
+  const reopen = ()=>{ openEditor(); $("sheet").scrollTop = keepScroll; };
+  if (t.id==="scsave"){
+    const name = $("scname").value.trim(); const g = saved.groups.find(x=>x.id===$("scgroup").value);
+    if (!name){ toast("Give it a name first"); $("scname").focus(); return; }
+    g.items.push({ id: uid(), name, q: $("q").value.trim() }); edChanged(); reopen(); toast(`Saved to ${g.name}`); return;
+  }
+  if (t.dataset.add){
+    const g = saved.groups.find(x=>x.id===t.dataset.add);
+    const nm = $("sheet").querySelector(`[data-newname="${t.dataset.add}"]`).value.trim();
+    const q = $("sheet").querySelector(`[data-newq="${t.dataset.add}"]`).value.trim();
+    if (!nm || !q){ toast("Fill in a name and a search"); return; }
+    g.items.push({ id: uid(), name: nm, q }); edChanged(); reopen(); return;
+  }
+  if (t.dataset.deli){ for (const g of saved.groups) g.items = g.items.filter(i=>i.id!==t.dataset.deli); active.delete(t.dataset.deli); edChanged(); reopen(); return; }
+  if (t.dataset.delg){
+    const key = "g"+t.dataset.delg;
+    if (delArm!==key){ delArm = key; reopen(); setTimeout(()=>{ if(delArm===key){ delArm=null; if(!$("sheet").hidden && $("sheet").querySelector(".ed")) reopen(); } }, 3000); return; }
+    const g = saved.groups.find(x=>x.id===t.dataset.delg); g.items.forEach(i=>active.delete(i.id));
+    saved.groups = saved.groups.filter(x=>x.id!==t.dataset.delg); delArm = null; edChanged(); reopen(); return;
+  }
+  if (t.id==="addgroup"){
+    const nm = $("newgroup").value.trim(); if (!nm){ toast("Name the group first"); return; }
+    saved.groups.push({ id: uid(), name: nm, items: [] }); edChanged(); reopen(); return;
+  }
+  if (t.id==="resetsv"){
+    if (delArm!=="reset"){ delArm = "reset"; reopen(); setTimeout(()=>{ if(delArm==="reset"){ delArm=null; if(!$("sheet").hidden && $("sheet").querySelector(".ed")) reopen(); } }, 3000); return; }
+    saved = defaultSaved(); active = new Set(); delArm = null; edChanged(); reopen(); toast("Back to defaults"); return;
+  }
+});
+
 // ---------- rendering ----------
 const $ = id => document.getElementById(id);
 const h = s => String(s??"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
@@ -302,8 +457,15 @@ function cardHtml(e){
 }
 
 function render(){
+  renderInner();
+  renderSaved();
+  if (entries.length && view.mode==="list" && activeNames().length){
+    const c=$("count"); c.textContent += " · " + activeNames().join(" + ");
+  }
+}
+function renderInner(){
   if(!entries.length){ showWelcome(); return; }
-  view = search($("q").value);
+  view = applySaved(search($("q").value));
   const out = $("out");
   if (view.mode==="list"){
     $("count").textContent = `Showing ${view.rows.length} / ${entries.length}` + (view.terms ? ` (${view.terms} terms)` : "");
@@ -454,6 +616,14 @@ $("out").addEventListener("click", e=>{
   }
   const c = e.target.closest(".card"); if(!c) return;
   const id = c.dataset.id; open.has(id) ? open.delete(id) : open.add(id); render();
+});
+$("saved").addEventListener("click", e=>{
+  const c = e.target.closest(".svchip");
+  if (c){ const id = c.dataset.sv; active.has(id) ? active.delete(id) : active.add(id); storeSaved(); render(); return; }
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.id==="svclear"){ active.clear(); storeSaved(); render(); }
+  if (b.id==="svedit") openEditor();
+  if (b.id==="svtoggle"){ savedOpen = !savedOpen; try{ localStorage.setItem("machineinfo.savedopen", savedOpen?"1":"0"); }catch{} renderSaved(); }
 });
 $("out").addEventListener("keydown", e=>{ if((e.key==="Enter"||e.key===" ") && e.target.classList.contains("card")){ e.preventDefault(); e.target.click(); } });
 $("loadbtn").addEventListener("click", ()=>$("file").click());
