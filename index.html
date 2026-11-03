@@ -23,18 +23,18 @@ body{margin:0}
 /* Layout: one-column workshop tool — sticky search bar, result cards that expand, sideways-scrolling compare table */
 :root{
   --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ed; --line:#cfd6de;
-  --fg:#18212b; --muted:#5b6876; --accent:#a8761c; --accent-ink:#ffffff; --accent-soft:#f5ead3;
+  --fg:#18212b; --muted:#5b6876; --accent:#a8761c; --accent-ink:#ffffff; --accent-soft:#f5ead3; --pps:#0f6e74; --pps-soft:#d6eff0;
   --ok:#1f7a4a; --warn:#b3261e;
   --sans:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
-  --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c;
+  --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c; --pps:#5fd0d6; --pps-soft:#16383b;
   --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
-  --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c;
+  --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c; --pps:#5fd0d6; --pps-soft:#16383b;
   --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -105,6 +105,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:var(--a
 .detail{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.88rem}
 .detail dt{color:var(--muted)}
 .detail dd{margin:0;font-family:var(--mono);font-size:.82rem;overflow-wrap:anywhere}
+.ebs.pps{background:var(--pps-soft);color:var(--pps)}
 .ebs{display:inline-block;font:600 .7rem var(--sans);letter-spacing:.06em;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle}
 .tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
 table{border-collapse:collapse;font-size:.85rem;min-width:100%}
@@ -205,6 +206,7 @@ function parse(raw){
     rec._rtp = rtp;
     rec._blob = id + " " + line + " " + ROWS.map(r=>rec[r]||"").join(" ");
     rec._flat = rec._blob.replace(/\s+/g,"");
+    rec._line = line;
     entries.push(rec); byId.set(id, rec);
   }
 }
@@ -281,9 +283,17 @@ function groupBanks(rows){
       sub: [man.length===1?man[0]:"mixed makes", cab.length===1?cab[0]:"mixed cabinets", den.length===1?den[0]:den.join("/")].join(" · ") };
   });
 }
+// EBS PPS if the EBS field mentions PPS, plain EBS if it mentions EBS
+function flagOf(e){
+  // PPS anywhere on the machine's line (as its own word) = EBS PPS
+  if (/\bpps\b/i.test(e._line || "")) return "pps";
+  if (/ebs/i.test(String(e["Linked to EBS"] ?? ""))) return "ebs";
+  return "";
+}
+function flagHtml(f){ return f==="pps" ? `<span class="ebs pps">EBS PPS</span>` : f==="ebs" ? `<span class="ebs">EBS</span>` : ""; }
 function cardHtml(e){
   const id = e["Machine Number"], isOpen = open.has(id);
-  const ebs = /ebs/i.test(e["Linked to EBS"]) ? `<span class="ebs">EBS</span>` : "";
+  const ebs = flagHtml(flagOf(e));
   return `<div class="card" tabindex="0" data-id="${h(id)}" aria-expanded="${isOpen}">
     <div class="top"><span class="num">${h(id)}</span><span class="theme">${h(e.THEME)}</span>${ebs}</div>
     <div class="sub">${h(e.Manufacturer)} · ${h(e["Cabinet Model"])} · <b>${h(e.Denomination)}</b> · ${h(e._rtp)} · ${h(e["Max bet"])}</div>
@@ -305,7 +315,7 @@ function render(){
       if (machsOn){
         // banks with their machines indented underneath
         out.innerHTML = `<div class="tree">` + banks.map(b=>`<div class="tbank">
-            <div class="bhead"><button class="nchip bk" data-bank="${h(b.no)}">${h(b.no)}</button><span class="theme">${h(b.title)} · ${b.rows.length}</span></div>
+            <div class="bhead"><button class="nchip bk" data-bank="${h(b.no)}">${h(b.no)}</button><span class="theme">${h(b.title)} · ${b.rows.length}</span>${[...new Set(b.rows.map(flagOf))].filter(Boolean).sort().map(flagHtml).join("")}</div>
             <div class="nums">${b.rows.map(e=>`<button class="nchip" data-id="${h(e["Machine Number"])}">${h(e["Machine Number"])}</button>`).join("")}</div>
           </div>`).join("") + `</div>`;
       } else {
