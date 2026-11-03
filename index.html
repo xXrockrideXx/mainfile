@@ -194,7 +194,7 @@ td.diff{background:var(--accent-soft)}
         <li><code>/regex</code> regular expression on the whole record</li>
         <li><b>Saved</b>: tap to filter by your saved searches (Denoms, Areas, your own groups). Same group = or, different groups = and. <b>Edit</b> to add your own.</li>
         <li><b>Machines</b> shows only machine numbers. <b>Banks</b> shows only banks (10101, 10103 → bank 101). Both on: machines indented under their bank. Tap any number for its details.</li>
-        <li><code>denom:1c</code> exactly 1c</li>
+        <li><code>denom:1c</code> exactly 1c · <code>flag:ebs</code> EBS (not PPS) · <code>flag:pps</code> EBS PPS</li>
         <li><code>bank:830-899</code> banks in a range, <code>bank:510</code> one bank, <code>bank:511+</code> from 511 up. Mix with the rest: <code>bank:150-199 &amp; 1c</code></li>
         <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
         <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
@@ -274,7 +274,7 @@ function search(q){
   }
   // Combined search:  ;  = OR between groups,  &  = AND inside a group,  !term = NOT
   //   2* & helix+ & !slant ; 93*
-  if (!q.startsWith("/") && (/[;&!]/.test(q) || /\b(bank|denom):/i.test(q))){
+  if (!q.startsWith("/") && (/[;&!]/.test(q) || /\b(bank|denom|flag):/i.test(q))){
     const groups = q.split(";").map(g=>g.split("&").map(t=>t.trim()).filter(Boolean)).filter(g=>g.length);
     let termCount = 0;
     const compiled = groups.map(g=>g.map(t=>{
@@ -283,6 +283,8 @@ function search(q){
       if (t.startsWith("!")) { neg = true; t = t.slice(1).trim(); }
       if (!t) return {neg, test:()=>true};
       if (t.startsWith("/")) { const rx = safeRx(t.slice(1).trim()); return {neg, test:e=> rx ? rx.test(e._blob) : false}; }
+      const fm = t.match(/^flag:\s*(ebs|pps)$/i);
+      if (fm){ const want = fm[1].toLowerCase(); return {neg, test:e=> flagOf(e) === want}; }
       const dm = t.match(/^denom:\s*(.+)$/i);
       if (dm){
         const want = dm[1].trim().toLowerCase();
@@ -338,11 +340,13 @@ const AREA_DEFAULTS = [
   ["WW","Walkway","6*"]
 ];
 const multiItem = () => ({ id: uid(), name: "Multi", full: "Multi-denom machines (coming soon)", q: "" });
+const progGroup = () => ({ id: uid(), name: "Progressives", items: [ { id: uid(), name: "EBS", full: "EBS linked, not EBS PPS", q: "flag:ebs" } ] });
 const areaItems = () => AREA_DEFAULTS.map(([name, full, q])=>({ id: uid(), name, full, q }));
 function defaultSaved(){
-  return { v: 4, groups: [
+  return { v: 6, groups: [
     { id: uid(), name: "Denoms", items: [multiItem(), ...["1c","2c","5c","10c","R1","R2","R5","R10"].map(d=>({ id: uid(), name: d, q: denomQ(d) }))] },
-    { id: uid(), name: "Areas", items: areaItems() }
+    { id: uid(), name: "Areas", items: areaItems() },
+    progGroup()
   ]};
 }
 // Older versions had "Areas" (Area 1-9) and "My areas" (Non-smoking): swap in the new Areas group,
@@ -358,10 +362,25 @@ function migrateSaved(sv){
     for (const it of sv.groups.flatMap(g=>g.items)) if (it.name==="Multi" && it.q==="denom:multi"){ it.q = ""; it.full = "Multi-denom machines (coming soon)"; }
     sv.v = 4;
   }
+  if (sv.v < 5){
+    const old = new Set(OLD_AREA_NAMES.map(n=>n.toLowerCase()));
+    for (const g of sv.groups) if (g.name==="Areas") g.items = g.items.filter(it=>!old.has(it.name.trim().toLowerCase()));
+    sv.v = 5;
+  }
+  if (sv.v < 6){
+    if (!sv.groups.some(g=>g.name==="Progressives")){
+      const at = sv.groups.findIndex(g=>g.name==="Areas");
+      sv.groups.splice(at<0 ? sv.groups.length : at+1, 0, progGroup());
+    }
+    sv.v = 6;
+  }
   return sv;
 }
+// Long names from before the short labels; PR, MFSM, MFNS, WW, NSSL and SMSL replace them.
+const OLD_AREA_NAMES = ["Area 1","Area 2","Area 3","Area 4","Area 5","Area 6","Area 7","Area 8","Area 9",
+  "Non-smoking","Smoking","Prive","Walkway","Smoking Sun Lounge","Non-smoking Sun Lounge"];
 function migrateV1(sv){
-  const OLD = new Set(["Area 1","Area 2","Area 3","Area 4","Area 5","Area 6","Area 7","Area 8","Area 9","Non-smoking"]);
+  const OLD = new Set(OLD_AREA_NAMES);
   const yours = [];
   let at = -1;
   sv.groups = sv.groups.filter((g,i)=>{
