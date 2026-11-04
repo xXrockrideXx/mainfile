@@ -139,16 +139,18 @@ button.danger{color:var(--warn)}
 .bankbody{border-top:1px solid var(--line);padding:8px;display:grid;gap:8px;background:var(--bg)}
 .bankbody .cmpbank{justify-self:start;padding:6px 12px;font-size:.85rem}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
-.card .top{display:flex;align-items:baseline;gap:10px;min-width:0}
+.card .top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;min-width:0}
+.mtag{display:inline-block;font:600 .72rem var(--sans);padding:1px 7px;border-radius:4px;border:1px solid var(--line);color:var(--fg);background:var(--sunk);vertical-align:middle;overflow-wrap:anywhere}
+.mtag i{font-style:normal;font-weight:500;color:var(--muted);font-family:var(--mono);font-size:.68rem}
 .num{font:600 1.05rem var(--mono);color:var(--accent);flex:none;font-variant-numeric:tabular-nums}
-.theme{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.theme{font-weight:600;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sub{font-size:.88rem;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
 .sub b{color:var(--fg);font-weight:600}
 .detail{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:.88rem}
 .detail dt{color:var(--muted)}
 .detail dd{margin:0;font-family:var(--mono);font-size:.82rem;overflow-wrap:anywhere}
 .ebs.pps{background:var(--pps-soft);color:var(--pps)}
-.ebs{display:inline-block;font:600 .7rem var(--sans);letter-spacing:.06em;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:middle}
+.ebs{display:inline-block;font:600 .7rem var(--sans);letter-spacing:.06em;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:1px 6px;vertical-align:middle}
 .tablebox{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px}
 table{border-collapse:collapse;font-size:.85rem;min-width:100%}
 th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -207,7 +209,7 @@ td.diff{background:var(--accent-soft)}
         <li><code>/regex</code> regular expression on the whole record</li>
         <li><b>Saved</b>: tap to filter by your saved searches (Denoms, Areas, your own groups). Same group = or, different groups = and. <b>Edit</b> to add your own.</li>
         <li><b>Machines</b> shows only machine numbers. <b>Banks</b> shows only banks (10101, 10103 → bank 101). Both on: machines indented under their bank. Tap any number for its details.</li>
-        <li><code>denom:1c</code> exactly 1c · <code>flag:ebs</code> EBS (not PPS) · <code>flag:pps</code> EBS PPS</li>
+        <li><code>denom:1c</code> exactly 1c · <code>multi:denom</code> · <code>multi:game</code> · <code>flag:ebs</code> EBS (not PPS) · <code>flag:pps</code> EBS PPS</li>
         <li><code>bank:830-899</code> banks in a range, <code>bank:510</code> one bank, <code>bank:511+</code> from 511 up. Mix with the rest: <code>bank:150-199 &amp; 1c</code></li>
         <li><code>|201*;305??</code> or <code>table: 201*</code> side-by-side compare</li>
         <li><code>/extract:^(\d{3})01$=&gt;$1</code> pulls parts out of machine numbers</li>
@@ -233,7 +235,8 @@ const KEY = "machineinfo.loaded";
 
 const FIELDS_17 = ["Manufacturer","Cabinet Model","Cabinet Code","THEME","Denomination","Machine RTP %","Max bet","Cabinet","Game Eprom 1","Base Eprom 1","Linked to EBS","Level 1","Level 2","Level 3","Level 4","Level 5","Level 6"];
 const FIELDS_16 = FIELDS_17.filter(f=>f!=="Cabinet Code");
-const ROWS = ["Machine Number", ...FIELDS_17];
+const MULTI_FIELDS = ["Multi Game","Multi Denom","Multi Denoms enabled"];
+const ROWS = ["Machine Number", ...FIELDS_17, ...MULTI_FIELDS];
 
 let entries = [], byId = new Map(), view = {mode:"list", rows:[]}, open = new Set();
 
@@ -244,7 +247,15 @@ function parse(raw){
     const m = line.match(/^\s*([^:]+?)\s*:\s*(.+?)\s*$/); if(!m) continue;
     const id = m[1].trim();
     const parts = m[2].split(">").map(s=>s.trim());
-    const names = parts.length >= 17 ? FIELDS_17 : FIELDS_16;
+    // 16 or 17 base fields, optionally followed by the 3 multi fields
+    const hasMulti = parts.length >= 19;
+    const base = hasMulti ? parts.length - 3 : parts.length;
+    const baseNames = base >= 17 ? FIELDS_17 : FIELDS_16;
+    const core = parts.slice(0, base), extra = hasMulti ? parts.slice(-3) : [];
+    parts.length = 0;
+    baseNames.forEach((n,i)=> parts.push(core[i] ?? ""));
+    parts.push(...extra);
+    const names = [...baseNames, ...(hasMulti ? MULTI_FIELDS : [])];
     const rec = {"Machine Number": id};
     names.forEach((n,i)=> rec[n] = parts[i] ?? "");
     let rtp = rec["Machine RTP %"];
@@ -287,7 +298,7 @@ function search(q){
   }
   // Combined search:  ;  = OR between groups,  &  = AND inside a group,  !term = NOT
   //   2* & helix+ & !slant ; 93*
-  if (!q.startsWith("/") && (/[;&!]/.test(q) || /\b(bank|denom|flag):/i.test(q))){
+  if (!q.startsWith("/") && (/[;&!]/.test(q) || /\b(bank|denom|flag|multi):/i.test(q))){
     const groups = q.split(";").map(g=>g.split("&").map(t=>t.trim()).filter(Boolean)).filter(g=>g.length);
     let termCount = 0;
     const compiled = groups.map(g=>g.map(t=>{
@@ -296,6 +307,8 @@ function search(q){
       if (t.startsWith("!")) { neg = true; t = t.slice(1).trim(); }
       if (!t) return {neg, test:()=>true};
       if (t.startsWith("/")) { const rx = safeRx(t.slice(1).trim()); return {neg, test:e=> rx ? rx.test(e._blob) : false}; }
+      const mm = t.match(/^multi:\s*(denom|game)$/i);
+      if (mm){ const f = mm[1].toLowerCase()==="game" ? "Multi Game" : "Multi Denom"; return {neg, test:e=> isOn(e[f])}; }
       const fm = t.match(/^flag:\s*(ebs|pps)$/i);
       if (fm){ const want = fm[1].toLowerCase(); return {neg, test:e=> flagOf(e) === want}; }
       const dm = t.match(/^denom:\s*(.+)$/i);
@@ -352,11 +365,11 @@ const AREA_DEFAULTS = [
   ["PRSM","Prive Smoking (511+)","bank:511-599"],
   ["WW","Walkway","6*"]
 ];
-const multiItem = () => ({ id: uid(), name: "Multi", full: "Multi-denom machines (coming soon)", q: "" });
+const multiItem = () => ({ id: uid(), name: "Multi", full: "Multi-denom machines", q: "multi:denom" });
 const progGroup = () => ({ id: uid(), name: "Progressives", items: [ { id: uid(), name: "EBS", full: "EBS linked, not EBS PPS", q: "flag:ebs" } ] });
 const areaItems = () => AREA_DEFAULTS.map(([name, full, q])=>({ id: uid(), name, full, q }));
 function defaultSaved(){
-  return { v: 6, groups: [
+  return { v: 7, groups: [
     { id: uid(), name: "Denoms", items: [multiItem(), ...["1c","2c","5c","10c","R1","R2","R5","R10"].map(d=>({ id: uid(), name: d, q: denomQ(d) }))] },
     { id: uid(), name: "Areas", items: areaItems() },
     progGroup()
@@ -386,6 +399,10 @@ function migrateSaved(sv){
       sv.groups.splice(at<0 ? sv.groups.length : at+1, 0, progGroup());
     }
     sv.v = 6;
+  }
+  if (sv.v < 7){
+    for (const it of sv.groups.flatMap(g=>g.items)) if (it.name==="Multi" && !it.q){ it.q = "multi:denom"; it.full = "Multi-denom machines"; }
+    sv.v = 7;
   }
   return sv;
 }
@@ -549,6 +566,16 @@ function flagOf(e){
   return "";
 }
 function flagHtml(f){ return f==="pps" ? `<span class="ebs pps">EBS PPS</span>` : f==="ebs" ? `<span class="ebs">EBS</span>` : ""; }
+const isOn = v => { const t = String(v ?? "").trim(); return t !== "" && !/^(0|no|n|false|-)$/i.test(t); };
+function multiTags(e){
+  let out = "";
+  if (isOn(e["Multi Game"])) out += `<span class="mtag">Multi Game</span>`;
+  if (isOn(e["Multi Denom"])){
+    const en = String(e["Multi Denoms enabled"] ?? "").trim();
+    out += `<span class="mtag">Multi Denom${isOn(en) ? ` <i>(${h(en)})</i>` : ""}</span>`;
+  }
+  return out;
+}
 function denomClass(d){
   const k = String(d ?? "").trim().toLowerCase();
   return ["1c","2c","5c","10c","r1","r2","r5","r10"].includes(k) ? "d-" + k : "d-other";
@@ -559,7 +586,7 @@ function cardHtml(e){
   const id = e["Machine Number"], isOpen = open.has(id);
   const ebs = flagHtml(flagOf(e));
   return `<div class="card" tabindex="0" data-id="${h(id)}" aria-expanded="${isOpen}">
-    <div class="top"><span class="num">${h(id)}</span>${denomTag(e)}<span class="theme">${h(e.THEME)}</span>${ebs}</div>
+    <div class="top"><span class="num">${h(id)}</span>${denomTag(e)}<span class="theme">${h(e.THEME)}</span>${ebs}${multiTags(e)}</div>
     <div class="sub">${h(e.Manufacturer)} · ${h(e["Cabinet Model"])} · ${h(e._rtp)} · ${h(e["Max bet"])}</div>
     ${isOpen ? `<dl class="detail">${ROWS.slice(1).filter(r=>r in e).map(r=>`<dt>${h(r)}</dt><dd>${h(e[r])}</dd>`).join("")}</dl>` : ""}
   </div>`;
