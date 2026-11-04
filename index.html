@@ -24,7 +24,7 @@ body{margin:0}
 :root{
   --bg:#eef1f4; --surface:#ffffff; --sunk:#e3e8ed; --line:#cfd6de;
   --fg:#18212b; --muted:#5b6876; --accent:#a8761c; --accent-ink:#ffffff; --accent-soft:#f5ead3; --pps:#0f6e74; --pps-soft:#d6eff0;
-  --d1c:#23803a; --d2c:#5f7410; --d5c:#1d5fc2; --d10c:#6a3fb8; --dr1:#a32d78; --dr2:#b3261e; --dr5:#b45309; --dr10:#7a5230; --dother:#5b6876;
+  --d1c:#23803a; --d2c:#5f7410; --d5c:#1d5fc2; --d10c:#6a3fb8; --dr1:#a32d78; --dr2:#b3261e; --dr5:#b45309; --dr10:#7a5230; --dother:#5b6876; --mg:#4338ca; --md:#be185d;
   --ok:#1f7a4a; --warn:#b3261e;
   --sans:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif;
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
@@ -32,12 +32,12 @@ body{margin:0}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
   --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c; --pps:#5fd0d6; --pps-soft:#16383b;
-  --d1c:#74d48a; --d2c:#c2d65c; --d5c:#80b2ff; --d10c:#bca0ff; --dr1:#f290cb; --dr2:#ff8f86; --dr5:#ffb46b; --dr10:#dcae80; --dother:#94a2b1;
+  --d1c:#74d48a; --d2c:#c2d65c; --d5c:#80b2ff; --d10c:#bca0ff; --dr1:#f290cb; --dr2:#ff8f86; --dr5:#ffb46b; --dr10:#dcae80; --dother:#94a2b1; --mg:#a5b4fc; --md:#f9a8d4;
   --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#12171d; --surface:#1b222a; --sunk:#232c36; --line:#33404d;
   --fg:#e6ebf0; --muted:#94a2b1; --accent:#e0a94a; --accent-ink:#1a1408; --accent-soft:#3a2f1c; --pps:#5fd0d6; --pps-soft:#16383b;
-  --d1c:#74d48a; --d2c:#c2d65c; --d5c:#80b2ff; --d10c:#bca0ff; --dr1:#f290cb; --dr2:#ff8f86; --dr5:#ffb46b; --dr10:#dcae80; --dother:#94a2b1;
+  --d1c:#74d48a; --d2c:#c2d65c; --d5c:#80b2ff; --d10c:#bca0ff; --dr1:#f290cb; --dr2:#ff8f86; --dr5:#ffb46b; --dr10:#dcae80; --dother:#94a2b1; --mg:#a5b4fc; --md:#f9a8d4;
   --ok:#5cc28a; --warn:#ff8a80; color-scheme:dark}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
@@ -140,8 +140,9 @@ button.danger{color:var(--warn)}
 .bankbody .cmpbank{justify-self:start;padding:6px 12px;font-size:.85rem}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
 .card .top{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;min-width:0}
-.mtag{display:inline-block;font:600 .72rem var(--sans);padding:1px 7px;border-radius:4px;border:1px solid var(--line);color:var(--fg);background:var(--sunk);vertical-align:middle;overflow-wrap:anywhere}
-.mtag i{font-style:normal;font-weight:500;color:var(--muted);font-family:var(--mono);font-size:.68rem}
+.mtag{--c:var(--muted);display:inline-block;font:600 .72rem var(--sans);padding:1px 7px;border-radius:4px;vertical-align:middle;overflow-wrap:anywhere;color:var(--c);border:1px solid var(--c);border-color:color-mix(in srgb, var(--c) 45%, transparent);background:var(--sunk);background:color-mix(in srgb, var(--c) 12%, transparent)}
+.mtag.mg{--c:var(--mg)} .mtag.md{--c:var(--md)}
+.mtag i{font-style:normal;font-weight:500;color:var(--fg);opacity:.8;font-family:var(--mono);font-size:.68rem}
 .num{font:600 1.05rem var(--mono);color:var(--accent);flex:none;font-variant-numeric:tabular-nums}
 .theme{font-weight:600;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sub{font-size:.88rem;color:var(--muted);margin-top:3px;overflow-wrap:anywhere}
@@ -569,10 +570,10 @@ function flagHtml(f){ return f==="pps" ? `<span class="ebs pps">EBS PPS</span>` 
 const isOn = v => { const t = String(v ?? "").trim(); return t !== "" && !/^(0|no|n|false|-)$/i.test(t); };
 function multiTags(e){
   let out = "";
-  if (isOn(e["Multi Game"])) out += `<span class="mtag">Multi Game</span>`;
+  if (isOn(e["Multi Game"])) out += `<span class="mtag mg">Multi Game</span>`;
   if (isOn(e["Multi Denom"])){
     const en = String(e["Multi Denoms enabled"] ?? "").trim();
-    out += `<span class="mtag">Multi Denom${isOn(en) ? ` <i>(${h(en)})</i>` : ""}</span>`;
+    out += `<span class="mtag md">Multi Denom${isOn(en) ? ` <i>(${h(en)})</i>` : ""}</span>`;
   }
   return out;
 }
